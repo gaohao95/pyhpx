@@ -35,7 +35,34 @@ ffi.cdef("""
 // Port argument types
 typedef struct _ffi_type ffi_type;
 typedef ffi_type *hpx_type_t;
+hpx_type_t HPX_CHAR_lvalue;
+hpx_type_t HPX_UCHAR_lvalue;
+hpx_type_t HPX_SCHAR_lvalue;
+hpx_type_t HPX_SHORT_lvalue;
+hpx_type_t HPX_USHORT_lvalue;
+hpx_type_t HPX_SSHORT_lvalue;
 hpx_type_t HPX_INT_lvalue;
+hpx_type_t HPX_UINT_lvalue;
+hpx_type_t HPX_SINT_lvalue;
+hpx_type_t HPX_LONG_lvalue;
+hpx_type_t HPX_ULONG_lvalue;
+hpx_type_t HPX_SLONG_lvalue;
+hpx_type_t HPX_VOID_lvalue;
+hpx_type_t HPX_UINT8_lvalue;
+hpx_type_t HPX_SINT8_lvalue;
+hpx_type_t HPX_UINT16_lvalue;
+hpx_type_t HPX_SINT16_lvalue;
+hpx_type_t HPX_UINT32_lvalue;
+hpx_type_t HPX_SINT32_lvalue;
+hpx_type_t HPX_UINT64_lvalue;
+hpx_type_t HPX_SINT64_lvalue;
+hpx_type_t HPX_FLOAT_lvalue;
+hpx_type_t HPX_DOUBLE_lvalue;
+hpx_type_t HPX_POINTER_lvalue;
+hpx_type_t HPX_LONGDOUBLE_lvalue;
+hpx_type_t HPX_COMPLEX_FLOAT_lvalue;
+hpx_type_t HPX_COMPLEX_DOUBLE_lvalue;
+hpx_type_t HPX_COMPLEX_LONGDOUBLE_lvalue;
 
 // Port action types
 typedef uint16_t hpx_action_t;
@@ -66,8 +93,34 @@ int hpx_register_action(hpx_action_type_t type, uint32_t attr, const char *key,
 ffi.set_source("_hpx",
 """
 #include <hpx/hpx.h>
+hpx_type_t HPX_CHAR_lvalue = HPX_CHAR;
+hpx_type_t HPX_UCHAR_lvalue = HPX_UCHAR;
+hpx_type_t HPX_SCHAR_lvalue = HPX_SCHAR;
+hpx_type_t HPX_SHORT_lvalue = HPX_SHORT;
+hpx_type_t HPX_USHORT_lvalue = HPX_USHORT;
+hpx_type_t HPX_SSHORT_lvalue = HPX_SSHORT;
 hpx_type_t HPX_INT_lvalue = HPX_INT;
-
+hpx_type_t HPX_UINT_lvalue = HPX_UINT;
+hpx_type_t HPX_SINT_lvalue = HPX_SINT;
+hpx_type_t HPX_LONG_lvalue = HPX_LONG;
+hpx_type_t HPX_ULONG_lvalue = HPX_ULONG;
+hpx_type_t HPX_SLONG_lvalue = HPX_SLONG;
+hpx_type_t HPX_VOID_lvalue = HPX_VOID;
+hpx_type_t HPX_UINT8_lvalue = HPX_UINT8;
+hpx_type_t HPX_SINT8_lvalue = HPX_SINT8;
+hpx_type_t HPX_UINT16_lvalue = HPX_UINT16;
+hpx_type_t HPX_SINT16_lvalue = HPX_SINT16;
+hpx_type_t HPX_UINT32_lvalue = HPX_UINT32;
+hpx_type_t HPX_SINT32_lvalue = HPX_SINT32;
+hpx_type_t HPX_UINT64_lvalue = HPX_UINT64;
+hpx_type_t HPX_SINT64_lvalue = HPX_SINT64;
+hpx_type_t HPX_FLOAT_lvalue = HPX_FLOAT;
+hpx_type_t HPX_DOUBLE_lvalue = HPX_DOUBLE;
+hpx_type_t HPX_POINTER_lvalue = HPX_POINTER;
+hpx_type_t HPX_LONGDOUBLE_lvalue = HPX_LONGDOUBLE;
+hpx_type_t HPX_COMPLEX_FLOAT_lvalue = HPX_COMPLEX_FLOAT;
+hpx_type_t HPX_COMPLEX_DOUBLE_lvalue = HPX_COMPLEX_DOUBLE;
+hpx_type_t HPX_COMPLEX_LONGDOUBLE_lvalue = HPX_COMPLEX_LONGDOUBLE;
 """,
                libraries=compile_libraries,
                include_dirs=compile_include_dirs,
