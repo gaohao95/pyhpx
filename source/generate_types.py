@@ -1,3 +1,5 @@
+# This script generates C code needed for porting HPX callback types.
+
 # The following code snipped are copied from "types.h" line 48-77
 all_def = """
 #define HPX_CHAR               &ffi_type_schar
