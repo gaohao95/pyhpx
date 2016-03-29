@@ -32,6 +32,19 @@ for argument in pkg_libs_result.split():
 
 ffi.cdef("""
 
+/* begin types.h */
+
+// Port HPX status
+#define  HPX_ERROR           ...
+#define  HPX_SUCCESS         ...
+#define  HPX_RESEND          ...
+#define  HPX_LCO_ERROR       ...
+#define  HPX_LCO_CHAN_EMPTY  ...
+#define  HPX_LCO_TIMEOUT     ...
+#define  HPX_LCO_RESET       ...
+#define  HPX_ENOMEM          ...
+#define  HPX_USER            ...
+
 // Port argument types
 typedef struct _ffi_type ffi_type;
 typedef ffi_type *hpx_type_t;
@@ -90,7 +103,7 @@ int hpx_register_action(hpx_action_type_t type, uint32_t attr, const char *key,
                         hpx_action_t *id, unsigned n, ...);
 """)
 
-ffi.set_source("_hpx",
+ffi.set_source("build._hpx",
 """
 #include <hpx/hpx.h>
 hpx_type_t HPX_CHAR_lvalue = HPX_CHAR;
@@ -125,7 +138,7 @@ hpx_type_t HPX_COMPLEX_LONGDOUBLE_lvalue = HPX_COMPLEX_LONGDOUBLE;
                libraries=compile_libraries,
                include_dirs=compile_include_dirs,
                library_dirs=compile_library_dirs,
-               extra_compile_args=compile_extra_compile_args.append('-g'))
+               extra_compile_args=compile_extra_compile_args)
 
 if __name__ == "__main__":
     ffi.compile(verbose=True)
