@@ -1,7 +1,7 @@
 from build._hpx import ffi, lib
 
-# handle_set store the reference to C memory so that it is not garbage collected by Python
-handle_set = set()
+# object_set store the reference to C memory so that it is not garbage collected by Python
+object_set = set()
 
 
 # Initializes the HPX runtime.
@@ -29,8 +29,9 @@ def exit(code):
 
 def run(action_id, *args, **kwargs):
     args_handle = ffi.new_handle(args)
-    handle_set.add(args_handle)
+    object_set.add(args_handle)
     args_handle_address = ffi.new("void**", args_handle)
+    # object_set.add(args_handle_address) ?? necessary ??
     lib._hpx_run(action_id, 1, args_handle_address)
 
 
@@ -74,8 +75,8 @@ COMPRESSED = lib.HPX_COMPRESSED
 def _generate_hpx_action(user_action):
     def hpx_action(user_args_handle):
         user_args = ffi.from_handle(user_args_handle)
-        handle_set.remove(user_args_handle)
-        return user_action(user_args)
+        object_set.remove(user_args_handle)
+        return user_action(*user_args)
     return ffi.callback("int(void*)")(hpx_action)
 
 
@@ -84,6 +85,7 @@ def _generate_hpx_action(user_action):
 def register_action(action, action_type, action_attribute):
     action_id = ffi.new("hpx_action_t *")
     hpx_action = _generate_hpx_action(action)
+    object_set.add(hpx_action)
     lib.hpx_register_action(action_type, action_attribute, b'aaa',
                             action_id, 2, hpx_action, lib.HPX_POINTER_lvalue)
     return action_id

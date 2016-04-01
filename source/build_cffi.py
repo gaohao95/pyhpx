@@ -161,7 +161,8 @@ hpx_type_t HPX_COMPLEX_LONGDOUBLE_lvalue = HPX_COMPLEX_LONGDOUBLE;
                libraries=compile_libraries,
                include_dirs=compile_include_dirs,
                library_dirs=compile_library_dirs,
-               extra_compile_args=compile_extra_compile_args)
+               extra_compile_args=compile_extra_compile_args.append('-g')
+)
 
 if __name__ == "__main__":
     ffi.compile(verbose=True)
