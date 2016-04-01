@@ -2,7 +2,7 @@ from cffi import FFI
 import subprocess
 ffi = FFI()
 
-# get the compilation flags
+# Get the compilation flags
 compile_libraries = []
 compile_include_dirs = []
 compile_library_dirs = []
@@ -32,7 +32,7 @@ for argument in pkg_libs_result.split():
 
 ffi.cdef("""
 
-/* begin types.h */
+/* Begin types.h */
 
 // Port HPX status
 #define  HPX_ERROR           ...
@@ -77,6 +77,10 @@ hpx_type_t HPX_COMPLEX_FLOAT_lvalue;
 hpx_type_t HPX_COMPLEX_DOUBLE_lvalue;
 hpx_type_t HPX_COMPLEX_LONGDOUBLE_lvalue;
 
+/* End types.h */
+
+/* Begin action.h */
+
 // Port action types
 typedef uint16_t hpx_action_t;
 typedef enum {
@@ -87,6 +91,31 @@ typedef enum {
   HPX_OPENCL,
 } hpx_action_type_t;
 
+// Port action attributes
+#define HPX_ATTR_NONE  ...
+#define HPX_MARSHALLED ...
+#define HPX_PINNED     ...
+#define HPX_INTERNAL   ...
+#define HPX_VECTORED   ...
+#define HPX_COALESCED  ...
+#define HPX_COMPRESSED ...
+
+// Port action API
+int hpx_register_action(hpx_action_type_t type, uint32_t attr, const char *key,
+                        hpx_action_t *id, unsigned n, ...);
+
+/* End action.h */
+
+
+/* Begin Runtime.h */
+
+int hpx_init(int *argc, char ***argv);
+void hpx_finalize();
+void hpx_exit(int code);
+int _hpx_run(hpx_action_t *entry, int nargs, ...);
+
+/* End Runtime.h */
+
 // Port parcel API
 typedef short hpx_status_t;
 typedef struct hpx_parcel hpx_parcel_t;
@@ -94,13 +123,7 @@ hpx_parcel_t *hpx_parcel_acquire(const void *data, size_t bytes);
 hpx_status_t hpx_parcel_send_sync(hpx_parcel_t *p);
 void hpx_parcel_set_action(hpx_parcel_t *p, hpx_action_t action);
 
-// Port action API
-int hpx_init(int *argc, char ***argv);
-void hpx_finalize();
-void hpx_exit(int code);
-int _hpx_run(hpx_action_t *entry, int nargs, ...);
-int hpx_register_action(hpx_action_type_t type, uint32_t attr, const char *key,
-                        hpx_action_t *id, unsigned n, ...);
+
 """)
 
 ffi.set_source("build._hpx",
