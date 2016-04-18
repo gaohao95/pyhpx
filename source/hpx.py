@@ -21,11 +21,9 @@ def init(argv=[]):
 def exit(code):
     lib.hpx_exit(code)
 
-
 def run(action_id, *args):
     arg = ffi.new("int* ", args[0])
     lib._hpx_run(action_id, 1, arg)
-
 
 def finalize():
     lib.hpx_finalize()
@@ -107,7 +105,6 @@ def _generate_hpx_action(user_action, action_arguments):
     for argument in action_arguments:
         action_arguments_cdef.append(_c_def_map[argument])
     return ffi.callback("int(" + ",".join(action_arguments_cdef) + ")")(user_action)
-
 
 # Register an HPX action
 # This must be called prior to hpx_init().
