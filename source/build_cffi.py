@@ -7,11 +7,10 @@ compile_libraries = []
 compile_include_dirs = []
 compile_library_dirs = []
 compile_extra_compile_args = []
-pkg_config_process = subprocess.run(
+pkg_config_process_output = subprocess.check_output(
     ["pkg-config", "--libs", "hpx"],
-    stdout=subprocess.PIPE,
     universal_newlines=True)
-pkg_libs_result = pkg_config_process.stdout[:-1]
+pkg_libs_result = pkg_config_process_output[:-1]
 for argument in pkg_libs_result.split():
     if argument[:2] == "-L":
         compile_library_dirs.append(argument[2:])
@@ -19,12 +18,11 @@ for argument in pkg_libs_result.split():
         compile_libraries.append(argument[2:])
     else:
         compile_extra_compile_args.append(argument)
-pkg_config_process = subprocess.run(
+pkg_config_process_output = subprocess.check_output(
     ["pkg-config", "--cflags", "hpx"],
-    stdout=subprocess.PIPE,
     universal_newlines=True
 )
-pkg_libs_result = pkg_config_process.stdout[:-1]
+pkg_libs_result = pkg_config_process_output[:-1]
 for argument in pkg_libs_result.split():
     if argument[:2] == '-I':
         compile_include_dirs.append(argument[2:])
