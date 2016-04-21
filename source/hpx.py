@@ -1,5 +1,6 @@
 from build._hpx import ffi, lib
 
+
 # Initializes the HPX runtime.
 # This must be called before other HPX functions.
 def init(argv=[]):
@@ -99,6 +100,9 @@ _c_def_map = {
 }
 
 
+# Store the C function for each user defined Python function so that they are not garbage collected
+hpx_action_dict = {}
+
 # Helper function to generate a suitable C function from user-defined Python function
 def _generate_hpx_action(user_action, action_arguments):
     action_arguments_cdef = []
@@ -116,4 +120,5 @@ def register_action(action, action_type, action_attribute, action_arguments):
     hpx_action = _generate_hpx_action(action, action_arguments)
     lib.hpx_register_action(action_type, action_attribute, b'aaa',
                             action_id, len(action_arguments) + 1, hpx_action, *action_arguments)
+    hpx_action_dict[action_id[0]] = hpx_action
     return action_id
