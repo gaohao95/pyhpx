@@ -1,3 +1,6 @@
+import sys, os
+sys.setdlopenflags(os.RTLD_GLOBAL | os.RTLD_LAZY)
+
 from build._hpx import ffi, lib
 
 
