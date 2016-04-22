@@ -37,7 +37,10 @@ _c_def_map = {
     USHORT: "unsigned short",
     SSHORT: "signed short",
     INT: "int", 
-    UINT: "unsigned int"
+    UINT: "unsigned int",
+    SINT: "signed int",
+    FLOAT: "float",
+    DOUBLE: "double"
 }
 
 
