@@ -90,10 +90,10 @@ COMPRESSED = lib.HPX_COMPRESSED
 # @action: a Python function to be registered as a HPX action
 # @action_type, @action_attribute see above
 # @action_arguments a list of argument types
-def register_action(action, action_type, action_attribute, action_arguments):
+def register_action(action, action_type, action_attribute, action_key, action_arguments):
     action_id = ffi.new("hpx_action_t *")
     hpx_action = _generate_hpx_action(action, action_arguments)
-    lib.hpx_register_action(action_type, action_attribute, b'aaa',
+    lib.hpx_register_action(action_type, action_attribute, action_key,
                             action_id, len(action_arguments) + 1, hpx_action, *action_arguments)
     _hpx_action_dict[action_id] = {'function': hpx_action, 
                                      'argument_types': action_arguments,

@@ -7,7 +7,7 @@ def add(a, b, c):
     hpx.exit(0)
 
 # Register action
-add_action = hpx.register_action(add, hpx.DEFAULT, hpx.ATTR_NONE, [hpx.INT, hpx.INT, hpx.INT])
+add_action = hpx.register_action(add, hpx.DEFAULT, hpx.ATTR_NONE, b'aaa', [hpx.INT, hpx.INT, hpx.INT])
 
 # Initialize HPX runtime and run the action
 hpx.init()
