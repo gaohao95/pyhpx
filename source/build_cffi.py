@@ -111,6 +111,7 @@ int hpx_init(int *argc, char ***argv);
 void hpx_finalize();
 void hpx_exit(int code);
 int _hpx_run(hpx_action_t *entry, int nargs, ...);
+void hpx_print_help(void);
 
 /* End Runtime.h */
 

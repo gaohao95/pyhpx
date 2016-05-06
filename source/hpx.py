@@ -3,6 +3,16 @@ sys.setdlopenflags(os.RTLD_GLOBAL | os.RTLD_LAZY)
 
 from build._hpx import ffi, lib
 
+# Define HPX status
+ERROR = lib.HPX_ERROR
+SUCCESS = lib.HPX_SUCCESS
+RESEND = lib.HPX_RESEND
+LCO_ERROR = lib.HPX_LCO_ERROR
+LCO_CHAN_EMPTY = lib.HPX_LCO_CHAN_EMPTY
+LCO_TIMEOUT = lib.HPX_LCO_TIMEOUT
+LCO_RESET = lib.HPX_LCO_RESET
+ENOMEM = lib.HPX_ENOMEM
+USER = lib.HPX_USER
 
 # Define argument types
 CHAR = lib.HPX_CHAR_lvalue
@@ -109,6 +119,7 @@ def register_action(action, action_type, action_attribute, action_key, action_ar
 
 # Initializes the HPX runtime.
 # This must be called before other HPX functions.
+# TODO: remove hpx specifig flags in argv
 def init(argv=[]):
     if len(argv) == 0:
         c_argc = ffi.NULL
@@ -121,7 +132,7 @@ def init(argv=[]):
             c_argv_obj.append(ffi.new("char[]", argv[i].encode('ascii')))
             c_argv[i] = c_argv_obj[i]
         c_argv_address = ffi.new("char ***", c_argv)
-    if lib.hpx_init(c_argc, c_argv_address) != lib.HPX_SUCCESS:
+    if lib.hpx_init(c_argc, c_argv_address) != SUCCESS:
         raise RuntimeError("hpx_init failed")
 
 # Exit the HPX runtime.
@@ -141,5 +152,7 @@ def run(action_id, *args):
 def finalize():
     lib.hpx_finalize()
 
+def print_help():
+    lib.hpx_print_help()
 
 
