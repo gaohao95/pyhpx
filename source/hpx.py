@@ -66,7 +66,7 @@ def _generate_hpx_action(user_action, action_arguments):
     action_arguments_cdef = []
     for argument in action_arguments:
         action_arguments_cdef.append(_c_def_map[argument])
-    return ffi.callback("int(" + ",".join(action_arguments_cdef) + ")")(user_action)
+    return ffi.callback("void(" + ",".join(action_arguments_cdef) + ")")(user_action)
 
 
 # Define action types
