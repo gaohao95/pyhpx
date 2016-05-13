@@ -40,7 +40,7 @@ def broadcast_domain_size(domain_size):
 
 
 def broadcast_domain_handler(size):
-	locality_parameters['domain_size'] = sizebbs
+	locality_parameters['domain_size'] = size
 	locality_parameters['domain_count'] = hpx.get_num_ranks()
 
 broadcast_domain_action = hpx.register_action(broadcast_domain_handler, 
