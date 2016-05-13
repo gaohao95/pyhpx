@@ -112,8 +112,8 @@ def register_action(action, action_type, action_attribute, action_key, action_ar
     lib.hpx_register_action(action_type, action_attribute, action_key,
                             action_id, len(action_arguments) + 1, hpx_action, *action_arguments)
     _hpx_action_dict[action_id] = {'function': hpx_action, 
-                                     'argument_types': action_arguments,
-                                     'argument_lists': []}
+                                   'argument_types': action_arguments,
+                                   'argument_lists': []}
     return action_id
 
 
@@ -139,15 +139,19 @@ def init(argv=[]):
 def exit(code):
     lib.hpx_exit(code)
 
-def run(action_id, *args):
-    function_signature = _hpx_action_dict[action_id]['argument_types']
-    num_arguments = len(function_signature)
+# Helper function for generating C arguments for the action corresponds to action_id
+def generate_c_arguments(action_id, *args):
+    argument_types = _hpx_action_dict[action_id]['argument_types']
     c_args = []
-    for i in range(num_arguments):
-        c_type = _c_def_map[function_signature[i]] + ' *'
+    for i in range(len(argument_types)):
+        c_type = _c_def_map[argument_types[i]] + ' *'
         c_args.append(ffi.new(c_type, args[i]))
-    lib._hpx_run(action_id, num_arguments, *c_args)
     _hpx_action_dict[action_id]['argument_lists'].append(c_args)
+    return c_args
+
+def run(action_id, *args):
+    c_args = generate_c_arguments(action_id, *args)
+    lib._hpx_run(action_id, len(c_args), *c_args)    
 
 def finalize():
     lib.hpx_finalize()
@@ -155,4 +159,12 @@ def finalize():
 def print_help():
     lib.hpx_print_help()
 
+def get_num_ranks():
+    return lib.hpx_get_num_ranks()
 
+def thread_current_pid():
+    return lib.hpx_thread_current_pid()
+
+def bcast_rsync(action_id, *args):
+    c_args = generate_c_arguments(action_id, *args)
+    lib._hpx_process_broadcast_rsync(thread_current_pid(), action_id[0], len(c_args), *c_args)

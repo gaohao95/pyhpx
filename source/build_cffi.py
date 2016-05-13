@@ -122,6 +122,30 @@ hpx_parcel_t *hpx_parcel_acquire(const void *data, size_t bytes);
 hpx_status_t hpx_parcel_send_sync(hpx_parcel_t *p);
 void hpx_parcel_set_action(hpx_parcel_t *p, hpx_action_t action);
 
+/* Begin topology.h */
+
+int hpx_get_num_ranks(void);
+
+/* End topology.h */
+
+/* Begin addr.h */
+
+typedef uint64_t hpx_addr_t;
+
+/* End addr.h */
+
+/* Begin process.h */
+
+typedef hpx_addr_t hpx_pid_t;
+int _hpx_process_broadcast_rsync(hpx_pid_t pid, hpx_action_t action, int nargs, ...);
+
+/* End process.h */
+
+/* Begin thread.h */
+
+hpx_pid_t hpx_thread_current_pid(void);
+
+/* End thread.h */
 
 """)
 
