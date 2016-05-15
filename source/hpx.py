@@ -112,8 +112,7 @@ def register_action(action, action_type, action_attribute, action_key, action_ar
     lib.hpx_register_action(action_type, action_attribute, action_key,
                             action_id, len(action_arguments) + 1, hpx_action, *action_arguments)
     _hpx_action_dict[action_id] = {'function': hpx_action, 
-                                   'argument_types': action_arguments,
-                                   'argument_lists': []}
+                                   'argument_types': action_arguments}
     return action_id
 
 
@@ -146,7 +145,6 @@ def generate_c_arguments(action_id, *args):
     for i in range(len(argument_types)):
         c_type = _c_def_map[argument_types[i]] + ' *'
         c_args.append(ffi.new(c_type, args[i]))
-    _hpx_action_dict[action_id]['argument_lists'].append(c_args)
     return c_args
 
 def run(action_id, *args):
