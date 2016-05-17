@@ -42,12 +42,34 @@ def broadcast_domain_size(domain_size):
 def broadcast_domain_handler(size):
 	locality_parameters['domain_size'] = size
 	locality_parameters['domain_count'] = hpx.get_num_ranks()
+	return hpx.SUCCESS
 
 broadcast_domain_action = hpx.register_action(broadcast_domain_handler, 
 											  hpx.DEFAULT, 
 											  hpx.ATTR_NONE, 
 											  b'broadcast_key',
 											  [hpx.DOUBLE])
+
+
+def domain_low_bound(which):
+	return locality_parameters['domain_size']//locality_parameters['domain_count']*which
+
+def domain_high_bound(which):
+	return locality_parameters['domain_size']//locality_parameters['domain_count']*(which+1)
+
+def map_bounds_to_locality(low, high):
+	domain_span = locality_parameters['domain_size']//locality_parameters['domain_count']
+	low_idx = low//domain_span
+	high_idx = high//domain_span
+	assert high_idx >= low_idx
+	if high_idx == low_idx:
+		return low_idx
+	elif high_idx - low_idx == 1:
+		delta_low = domain_low_bound(high_idx) - low
+		delta_high = high - domain_high_bound(low_idx)
+		return (high_idx if delta_high > delta_low else low_idx)
+	else:
+		return low_idx
 
 
 def print_usage(prog):
