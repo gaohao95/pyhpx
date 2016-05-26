@@ -2,6 +2,7 @@ import sys, os
 sys.setdlopenflags(os.RTLD_GLOBAL | os.RTLD_LAZY)
 
 from build._hpx import ffi, lib
+import numpy as np
 
 # Define HPX status
 ERROR = lib.HPX_ERROR
@@ -166,3 +167,15 @@ def thread_current_pid():
 def bcast_rsync(action_id, *args):
     c_args = generate_c_arguments(action_id, *args)
     lib._hpx_process_broadcast_rsync(thread_current_pid(), action_id[0], len(c_args), *c_args)
+
+# lower_level api for gas
+def gas_alloc_local_at_sync(n, bsize, boundary, loc):
+    return lib.hpx_gas_alloc_local_at_sync(n, bsize, boundary, loc)
+
+def locality_address(locality_no):
+    return lib.HPX_THERE(locality_no)
+
+# get numpy type for a user-specified C type
+def get_numpy_type(type_string):
+    return np.dtype((np.void, ffi.sizeof(type_string)))
+

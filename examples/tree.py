@@ -1,5 +1,16 @@
 import sys
 import hpx
+import numpy as np
+
+particle_type = np.dtype([('pos', np.float64), ('mass', np.float64), ('phi', np.float64)])
+moment_type = np.dtype([('mtot', np.float64), ('xcom', np.float64), ('Q00', np.float64)])
+node_type = np.dtype([('left', hpx.get_numpy_type('hpx_addr_t')),
+					  ('right', hpx.get_numpy_type('hpx_addr_t')),
+					  ('low', np.float64),
+					  ('high', np.float64),
+					  ('moments', moment_type),
+					  ('parts', hpx.get_numpy_type('hpx_addr_t')),
+					  ('count', np.int32)])
 
 locality_parameters = {}
 
@@ -26,6 +37,8 @@ def main(argv):
 
 def tree_main(n_parts, n_partition, theta_c, domain_size):
 	broadcast_domain_size(domain_size)
+	root = create_node(0.0, domain_size)
+	print(root)
 	hpx.exit(hpx.SUCCESS)
 
 tree_main_action = hpx.register_action(tree_main, 
@@ -59,8 +72,8 @@ def domain_high_bound(which):
 
 def map_bounds_to_locality(low, high):
 	domain_span = locality_parameters['domain_size']//locality_parameters['domain_count']
-	low_idx = low//domain_span
-	high_idx = high//domain_span
+	low_idx = int(low//domain_span)
+	high_idx = int(high//domain_span)
 	assert high_idx >= low_idx
 	if high_idx == low_idx:
 		return low_idx
@@ -70,6 +83,11 @@ def map_bounds_to_locality(low, high):
 		return (high_idx if delta_high > delta_low else low_idx)
 	else:
 		return low_idx
+
+def create_node(low, high):
+	where = map_bounds_to_locality(low, high)
+	retval = hpx.gas_alloc_local_at_sync(1, node_type.itemsize, 0, hpx.locality_address(where))
+	return retval
 
 
 def print_usage(prog):

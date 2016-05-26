@@ -131,6 +131,7 @@ int hpx_get_num_ranks(void);
 /* Begin addr.h */
 
 typedef uint64_t hpx_addr_t;
+hpx_addr_t HPX_THERE(uint32_t i);
 
 /* End addr.h */
 
@@ -146,6 +147,16 @@ int _hpx_process_broadcast_rsync(hpx_pid_t pid, hpx_action_t action, int nargs, 
 hpx_pid_t hpx_thread_current_pid(void);
 
 /* End thread.h */
+
+/* Begin gas.h */
+
+hpx_addr_t hpx_gas_alloc_local(size_t n, uint32_t bsize, uint32_t boundary);
+hpx_addr_t hpx_gas_alloc_local_at_sync(size_t n, uint32_t bsize, uint32_t boundary,
+                                       hpx_addr_t loc);
+void hpx_gas_alloc_local_at_async(size_t n, uint32_t bsize, uint32_t boundary,
+                                  hpx_addr_t loc, hpx_addr_t lco);
+
+/* End gas.h */
 
 """)
 
