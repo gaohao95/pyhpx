@@ -130,6 +130,7 @@ int hpx_get_num_ranks(void);
 
 /* Begin addr.h */
 
+#define HPX_NULL ...
 typedef uint64_t hpx_addr_t;
 hpx_addr_t HPX_THERE(uint32_t i);
 

@@ -175,7 +175,11 @@ def gas_alloc_local_at_sync(n, bsize, boundary, loc):
 def locality_address(locality_no):
     return lib.HPX_THERE(locality_no)
 
+NULL = lib.HPX_NULL
+
 # get numpy type for a user-specified C type
 def get_numpy_type(type_string):
+    if ffi.typeof(type_string) is ffi.typeof("uint64_t"):
+        return np.uint64
     return np.dtype((np.void, ffi.sizeof(type_string)))
 

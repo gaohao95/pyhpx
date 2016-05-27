@@ -87,6 +87,7 @@ def map_bounds_to_locality(low, high):
 def create_node(low, high):
 	where = map_bounds_to_locality(low, high)
 	retval = hpx.gas_alloc_local_at_sync(1, node_type.itemsize, 0, hpx.locality_address(where))
+	vals = np.array([(hpx.NULL, hpx.NULL, low, high, (0.0, 0.0, 0.0), hpx.NULL, 0)], dtype=node_type)
 	return retval
 
 
