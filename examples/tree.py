@@ -38,7 +38,6 @@ def main(argv):
 def tree_main(n_parts, n_partition, theta_c, domain_size):
 	broadcast_domain_size(domain_size)
 	root = create_node(0.0, domain_size)
-	print(root)
 	hpx.exit(hpx.SUCCESS)
 
 tree_main_action = hpx.register_action(tree_main, 
@@ -88,6 +87,8 @@ def create_node(low, high):
 	where = map_bounds_to_locality(low, high)
 	retval = hpx.gas_alloc_local_at_sync(1, node_type.itemsize, 0, hpx.locality_address(where))
 	vals = np.array([(hpx.NULL, hpx.NULL, low, high, (0.0, 0.0, 0.0), hpx.NULL, 0)], dtype=node_type)
+	pointer, read_only_flag = vals.__array_interface__['data']
+	hpx.gas_memput_rsync(retval, pointer, node_type.itemsize)
 	return retval
 
 

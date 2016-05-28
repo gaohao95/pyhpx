@@ -183,3 +183,9 @@ def get_numpy_type(type_string):
         return np.uint64
     return np.dtype((np.void, ffi.sizeof(type_string)))
 
+def gas_memput_rsync(to_addr, from_addr, size):
+    #TODO: error checking
+    from_addr_ptr = ffi.cast("void *", from_addr)
+    if lib.hpx_gas_memput_rsync(to_addr, from_addr_ptr, size) != SUCCESS:
+        raise RuntimeError("Fail to copy data from a local buffer to a global address")
+
