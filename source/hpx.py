@@ -102,12 +102,21 @@ COALESCED = lib.HPX_COALESCED
 COMPRESSED = lib.HPX_COMPRESSED
 
 
-# Register an HPX action
-# This must be called prior to hpx_init().
-# @action: a Python function to be registered as a HPX action
-# @action_type, @action_attribute see above
-# @action_arguments a list of argument types
 def register_action(action, action_type, action_attribute, action_key, action_arguments):
+    """Register an HPX action.
+
+    This must be called prior to hpx_init().
+
+    Args:
+        action: A Python function to be registered as a HPX action
+        action_type: Type of the action.
+        action_attribute: Attributes of the action. 
+        action_key: A Python byte object to be specified as key for this action.
+        action_arguments: A Python list of argument types.
+
+    Returns:
+        The id of this argument.
+    """
     action_id = ffi.new("hpx_action_t *")
     hpx_action = _generate_hpx_action(action, action_arguments)
     lib.hpx_register_action(action_type, action_attribute, action_key,
@@ -184,7 +193,6 @@ def get_numpy_type(type_string):
     return np.dtype((np.void, ffi.sizeof(type_string)))
 
 def gas_memput_rsync(to_addr, from_addr, size):
-    #TODO: error checking
     from_addr_ptr = ffi.cast("void *", from_addr)
     if lib.hpx_gas_memput_rsync(to_addr, from_addr_ptr, size) != SUCCESS:
         raise RuntimeError("Fail to copy data from a local buffer to a global address")
