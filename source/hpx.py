@@ -104,8 +104,9 @@ COMPRESSED = lib.HPX_COMPRESSED
 
 def register_action(action, action_type, action_attribute, action_key, action_arguments):
     """Register an HPX action.
-
-    This must be called prior to hpx_init().
+    
+    Note:
+        This must be called prior to hpx_init().
 
     Args:
         action: A Python function to be registered as a HPX action
@@ -197,3 +198,38 @@ def gas_memput_rsync(to_addr, from_addr, size):
     if lib.hpx_gas_memput_rsync(to_addr, from_addr_ptr, size) != SUCCESS:
         raise RuntimeError("Fail to copy data from a local buffer to a global address")
 
+
+def gas_try_pin(addr, return_local=True):
+    """Performs address translation.
+
+    This will try to perform a global-to-local translation on the global @p
+    addr, and return the address in local virtual memory space if the pin is
+    successful and @p return_local is true.
+    
+    If @p addr is not local, or @p addr is local and return_local is true but 
+    the pin fails, this will raise an Runtime error.
+
+    Args:
+        addr: The address in global memory space to be translated.
+        return_local: Whether return the local virtual memory correspondence.
+
+    Return:
+        Local memory which corresponds to the given global memory if successful
+        and return_local is true.
+
+    """
+    if return_local == True:
+        local = ffi.new("void **")
+        rtv = lib.hpx_gas_try_pin(addr, local)
+        if rtv == False:
+            raise RuntimeError("Pinning the global memory fails")
+        else:
+            return local[0]
+    else:
+        rtv = lib.hpx_gas_try_pin(addr, ffi.NULL)
+        if rtv == False:
+            raise RuntimeError("Pinning the global memory fails")
+
+
+def addr2buffer(addr, size):
+    return ffi.buffer(addr, size)

@@ -37,7 +37,10 @@ def main(argv):
 
 def tree_main(n_parts, n_partition, theta_c, domain_size):
 	broadcast_domain_size(domain_size)
+	
 	root = create_node(0.0, domain_size)
+	parts = generate_parts(n_parts, domain_size, root)
+	
 	hpx.exit(hpx.SUCCESS)
 
 tree_main_action = hpx.register_action(tree_main, 
@@ -90,6 +93,13 @@ def create_node(low, high):
 	pointer, read_only_flag = vals.__array_interface__['data']
 	hpx.gas_memput_rsync(retval, pointer, node_type.itemsize)
 	return retval
+
+def generate_parts(n_parts, domain_length, where):
+	parts_gas = hpx.gas_alloc_local_at_sync(1, particle_type.itemsize*n_parts, 0, where)
+	assert parts_gas != hpx.NULL
+	parts_buffer = hpx.addr2buffer(hpx.gas_try_pin(parts_gas), particle_type.itemsize*n_parts)
+	parts = np.frombuffer(parts_buffer, dtype=particle_type)
+	print(parts.shape)
 
 
 def print_usage(prog):
