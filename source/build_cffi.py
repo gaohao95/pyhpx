@@ -74,6 +74,7 @@ hpx_type_t HPX_LONGDOUBLE_lvalue;
 hpx_type_t HPX_COMPLEX_FLOAT_lvalue;
 hpx_type_t HPX_COMPLEX_DOUBLE_lvalue;
 hpx_type_t HPX_COMPLEX_LONGDOUBLE_lvalue;
+hpx_type_t HPX_ADDR_lvalue;
 
 /* End types.h */
 
@@ -162,6 +163,21 @@ void hpx_gas_unpin(hpx_addr_t addr);
 
 /* End gas.h */
 
+/* Begin lco.h */
+
+hpx_addr_t hpx_lco_future_new(int size);
+hpx_status_t hpx_lco_wait(hpx_addr_t lco);
+void hpx_lco_delete_sync(hpx_addr_t lco);
+
+/* End lco.h */
+
+/* Being rpc.h */
+
+int _hpx_call_sync(hpx_addr_t addr, hpx_action_t action, void *out, size_t olen, int n, ...);
+int _hpx_call(hpx_addr_t addr, hpx_action_t action, hpx_addr_t result, int n, ...);
+
+/* End rpc.h */
+
 """)
 
 ffi.set_source("build._hpx",
@@ -195,6 +211,7 @@ hpx_type_t HPX_LONGDOUBLE_lvalue = HPX_LONGDOUBLE;
 hpx_type_t HPX_COMPLEX_FLOAT_lvalue = HPX_COMPLEX_FLOAT;
 hpx_type_t HPX_COMPLEX_DOUBLE_lvalue = HPX_COMPLEX_DOUBLE;
 hpx_type_t HPX_COMPLEX_LONGDOUBLE_lvalue = HPX_COMPLEX_LONGDOUBLE;
+hpx_type_t HPX_ADDR_lvalue = HPX_ADDR;
 """,
                libraries=compile_libraries,
                include_dirs=compile_include_dirs,

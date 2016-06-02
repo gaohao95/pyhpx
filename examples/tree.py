@@ -41,6 +41,8 @@ def tree_main(n_parts, n_partition, theta_c, domain_size):
 	root = create_node(0.0, domain_size)
 	parts = generate_parts(n_parts, domain_size, root)
 	
+	partition_node_sync(root, parts, n_parts, n_partition)
+
 	hpx.exit(hpx.SUCCESS)
 
 tree_main_action = hpx.register_action(tree_main, 
@@ -65,6 +67,15 @@ broadcast_domain_action = hpx.register_action(broadcast_domain_handler,
 											  b'broadcast_key',
 											  [hpx.DOUBLE])
 
+
+def partition_node_handler(node, parts, n_parts, n_partition):
+	pass
+
+partition_node_action = hpx.register_action(partition_node_handler,
+											hpx.DEFAULT,
+											hpx.PINNED,
+											b'partition_node_key',
+											[hpx.POINTER, hpx.ADDR, hpx.INT, hpx.INT])
 
 def domain_low_bound(which):
 	return locality_parameters['domain_size']//locality_parameters['domain_count']*which
@@ -106,6 +117,12 @@ def generate_parts(n_parts, domain_length, where):
 	hpx.gas_unpin(parts_gas)
 	return parts_gas
 
+def partition_node_sync(node, parts, n_parts, n_partition):
+	done = hpx.lco_future_new(moment_type.itemsize)
+	assert done != hpx.NULL
+	hpx.call(node, partition_node_action, done, parts, n_parts, n_partition)
+	hpx.lco_wait(done)
+	hpx.lco_delete_sync(done)
 
 def print_usage(prog):
 	print('Usage: %s <N parts> <Partition Limit> <theta> <domain size>\n' % (prog), file=sys.stderr)

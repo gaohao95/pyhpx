@@ -42,6 +42,7 @@ LONGDOUBLE = lib.HPX_LONGDOUBLE_lvalue
 COMPLEX_FLOAT = lib.HPX_COMPLEX_FLOAT_lvalue
 COMPLEX_DOUBLE = lib.HPX_COMPLEX_DOUBLE_lvalue
 COMPLEX_LONGDOUBLE = lib.HPX_COMPLEX_LONGDOUBLE_lvalue
+ADDR = lib.HPX_ADDR_lvalue
 
 
 # Define a dictionary to map argument types to C definition
@@ -54,7 +55,9 @@ _c_def_map = {
     UINT: "unsigned int",
     SINT: "signed int",
     FLOAT: "float",
-    DOUBLE: "double"
+    DOUBLE: "double",
+    POINTER: "void*",
+    ADDR: "hpx_addr_t"
 }
 
 
@@ -154,7 +157,10 @@ def generate_c_arguments(action_id, *args):
     argument_types = _hpx_action_dict[action_id]['argument_types']
     c_args = []
     for i in range(len(argument_types)):
-        c_type = _c_def_map[argument_types[i]] + ' *'
+        if argument_types[i] != POINTER:
+            c_type = _c_def_map[argument_types[i]] + ' *'
+        else:
+            c_type = 'hpx_addr_t *'
         c_args.append(ffi.new(c_type, args[i]))
     return c_args
 
@@ -213,7 +219,7 @@ def gas_try_pin(addr, return_local=True):
         addr: The address in global memory space to be translated.
         return_local: Whether return the local virtual memory correspondence.
 
-    Return:
+    Returns:
         Local memory which corresponds to the given global memory if successful
         and return_local is true.
 
@@ -236,4 +242,67 @@ def addr2buffer(addr, size):
 
 
 def gas_unpin(addr):
+    """Unpin a previously pinned block.
+
+    Args:
+        addr: The address of global memory to unpin.
+    """
     lib.hpx_gas_unpin(addr)
+
+
+def lco_future_new(size):
+    """Create a future.
+    
+    Futures are builtin LCOs that represent values returned from asynchronous
+    computation.
+    Futures are always allocated in the global address space, because their
+    addresses are used as the targets of parcels.
+
+    Args:
+        size: The size in bytes of the future's value (may be 0)
+    Returns:
+        The global address of the newly allocated future
+    """
+    return lib.hpx_lco_future_new(size)
+
+
+def lco_wait(lco):
+    """Perform a wait operation.
+
+    The LCO blocks the caller until an LCO set operation triggers the LCO. Each
+    LCO type has its own semantics for the state under which this occurs.
+    
+    Args:
+        lco: The LCO we're processing
+    """
+    rtv = lib.hpx_lco_wait(lco)
+    if rtv != SUCCESS:
+        raise RuntimeError("LCO error")
+
+
+def lco_delete_sync(lco):
+    """Delete an LCO synchronously.
+
+    Args:
+        lco: The address of the LCO to delete
+    """
+    lib.hpx_lco_delete_sync(lco)
+
+
+def call(addr, action_id, result, *args):
+    """Locally synchronous call interface.
+
+    This is a locally-synchronous, globally-asynchronous variant of
+    the remote-procedure call interface. If @p result is not hpx.NULL,
+    hpx_call puts the the resulting value in @p result at some point
+    in the future.
+    
+    Args:
+        addr: The address that defines where the action is executed.
+        action: The action to perform.
+        result: An address of an LCO to trigger with the result.
+    """
+    c_args = generate_c_arguments(action_id, *args)
+    rtv = lib._hpx_call(addr, action_id, result, len(c_args), *c_args)
+    if rtv != SUCCESS:
+        raise RuntimeError("A problem occurs during the hpx_call invocation")
