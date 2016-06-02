@@ -125,7 +125,9 @@ def register_action(action, action_type, action_attribute, action_key, action_ar
     hpx_action = _generate_hpx_action(action, action_arguments)
     lib.hpx_register_action(action_type, action_attribute, action_key,
                             action_id, len(action_arguments) + 1, hpx_action, *action_arguments)
-    _hpx_action_dict[action_id] = {'function': hpx_action, 
+    if action_attribute == PINNED:
+        action_arguments = action_arguments[1:]
+    _hpx_action_dict[action_id] = {'function': hpx_action,
                                    'argument_types': action_arguments}
     return action_id
 
@@ -157,10 +159,7 @@ def generate_c_arguments(action_id, *args):
     argument_types = _hpx_action_dict[action_id]['argument_types']
     c_args = []
     for i in range(len(argument_types)):
-        if argument_types[i] != POINTER:
-            c_type = _c_def_map[argument_types[i]] + ' *'
-        else:
-            c_type = 'hpx_addr_t *'
+        c_type = _c_def_map[argument_types[i]] + ' *'
         c_args.append(ffi.new(c_type, args[i]))
     return c_args
 
@@ -303,6 +302,6 @@ def call(addr, action_id, result, *args):
         result: An address of an LCO to trigger with the result.
     """
     c_args = generate_c_arguments(action_id, *args)
-    rtv = lib._hpx_call(addr, action_id, result, len(c_args), *c_args)
+    rtv = lib._hpx_call(addr, action_id[0], result, len(c_args), *c_args)
     if rtv != SUCCESS:
         raise RuntimeError("A problem occurs during the hpx_call invocation")
