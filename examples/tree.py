@@ -97,9 +97,14 @@ def create_node(low, high):
 def generate_parts(n_parts, domain_length, where):
 	parts_gas = hpx.gas_alloc_local_at_sync(1, particle_type.itemsize*n_parts, 0, where)
 	assert parts_gas != hpx.NULL
-	parts_buffer = hpx.addr2buffer(hpx.gas_try_pin(parts_gas), particle_type.itemsize*n_parts)
+	parts_buffer = hpx.addr2buffer(hpx.gas_try_pin(parts_gas, return_local=True), particle_type.itemsize*n_parts)
 	parts = np.frombuffer(parts_buffer, dtype=particle_type)
-	print(parts.shape)
+
+	parts['pos'] = np.random.rand(n_parts) * domain_length
+	parts['mass'] = np.random.rand(n_parts) * 0.9 + 0.1
+
+	hpx.gas_unpin(parts_gas)
+	return parts_gas
 
 
 def print_usage(prog):

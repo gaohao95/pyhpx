@@ -233,3 +233,7 @@ def gas_try_pin(addr, return_local=True):
 
 def addr2buffer(addr, size):
     return ffi.buffer(addr, size)
+
+
+def gas_unpin(addr):
+    lib.hpx_gas_unpin(addr)
