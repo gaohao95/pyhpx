@@ -150,9 +150,11 @@ def init(argv=[]):
     if lib.hpx_init(c_argc, c_argv_address) != SUCCESS:
         raise RuntimeError("hpx_init failed")
 
+
 # Exit the HPX runtime.
 def exit(code):
     lib.hpx_exit(code)
+
 
 # Helper function for generating C arguments for the action corresponds to action_id
 def generate_c_arguments(action_id, *args):
@@ -163,34 +165,174 @@ def generate_c_arguments(action_id, *args):
         c_args.append(ffi.new(c_type, args[i]))
     return c_args
 
+
 def run(action_id, *args):
     c_args = generate_c_arguments(action_id, *args)
     lib._hpx_run(action_id, len(c_args), *c_args)    
 
+
 def finalize():
     lib.hpx_finalize()
+
 
 def print_help():
     lib.hpx_print_help()
 
+
 def get_num_ranks():
     return lib.hpx_get_num_ranks()
 
+
 def thread_current_pid():
     return lib.hpx_thread_current_pid()
+
 
 def bcast_rsync(action_id, *args):
     c_args = generate_c_arguments(action_id, *args)
     lib._hpx_process_broadcast_rsync(thread_current_pid(), action_id[0], len(c_args), *c_args)
 
-# lower_level api for gas
-def gas_alloc_local_at_sync(n, bsize, boundary, loc):
-    return lib.hpx_gas_alloc_local_at_sync(n, bsize, boundary, loc)
 
-def locality_address(locality_no):
-    return lib.HPX_THERE(locality_no)
+class LocalAddr:
+    def __init__(self, addr):
+        self._addr = addr
 
-NULL = lib.HPX_NULL
+    def memput_rsync(self, global_addr, size):
+        """This copies data synchronously from a local buffer to a global 
+        address.
+
+        This shares the same functionality as hpx_gas_memput(), but will not
+        return until the write has completed remotely. This exposes the 
+        potential for a more efficient mechanism for synchronous operation, and
+        should be preferred where fully synchronous semantics are necessary.
+
+        Args:
+            global_addr (GlobalAddr): The global address to copy to
+            size (int): The size, in bytes, of the buffer to copy
+
+        Raises:
+            RuntimeError: If copy operation fails
+        """
+        from_addr_ptr = ffi.cast("void *", self._addr)
+        if lib.hpx_gas_memput_rsync(global_addr._addr, from_addr_ptr, size) != SUCCESS:
+            raise RuntimeError("Fail to copy data from a local buffer to a global address")
+
+
+class GlobalAddr:
+    def __init__(self, addr):
+        """Constructor for GlobalAddr class.
+
+        Args:
+            addr (int): The address in global memory space
+        """
+        self._addr = addr
+
+    def locality(locality_no):
+        """ Get the global address representing some other locality, that is
+        suitable for use as a parcel target.
+
+        Args:
+            locality_no (int): The number of that locality
+
+        Returns:
+            An GlobalAddr object representing that locality
+        """
+        return GlobalAddr(lib.HPX_THERE(locality_no))
+
+    NULL = lib.HPX_NULL
+
+    def try_pin(self, return_local=True):
+        """Performs address translation.
+
+        This will try to perform a global-to-local translation, and return the 
+        address in local virtual memory space if the pin is successful and 
+        `return_local` is true.
+        
+        If the memory of this GlobalAddr object is not local, or it is local
+        and `return_local` is true but the pin fails, this will raise an
+        Runtime error.
+
+        Args:
+            return_local (Optional[bool]): Whether return the local virtual
+                memory correspondence.
+
+        Returns:
+            An LocalAddr object representing local memory which corresponds to 
+            the given global memory if successful and `return_local` is true.
+        """
+        if return_local == True:
+            local = ffi.new("void **")
+            rtv = lib.hpx_gas_try_pin(self.addr, local)
+            if rtv == False:
+                raise RuntimeError("Pinning the global memory fails")
+            else:
+                return LocalAddr(local[0])
+        else:
+            rtv = lib.hpx_gas_try_pin(self.addr, ffi.NULL)
+            if rtv == False:
+                raise RuntimeError("Pinning the global memory fails")
+
+    def unpin(self):
+        """Unpin this address.
+        """
+        lib.hpx_gas_unpin(self._addr)                
+
+
+class AddrBlock:
+    def __init__(self, addr, size, dtype):
+        """Constructor of AddrBlock class
+
+        Args:
+            addr (GlobalAddr): The address in global memory space
+            size (int): Total size of this address block, must be a multiple of
+                the size of `dtype`.
+            dtype (numpy.dtype): The type of each object in address block
+
+        """
+        self.addr = addr
+        self.size = size
+        self.dtype = dtype
+
+    def alloc_local_at_sync(num_block, num_object, dtype, boundary, loc):
+        """Allocate blocks of global memory.
+
+        This function allocates memory in the global address space that can be 
+        moved. The allocated memory, by default, has affinity to the allocating 
+        node, however in low memory conditions the allocated memory may not be 
+        local to the caller. As it allocated in the GAS, it is accessible from 
+        any locality, and may be relocated by the runtime.
+
+        Args:
+            num_block (int): The number of blocks to allocate.
+            num_object (int): The number of objects per block.
+            dtype (numpy.dtype): The type of each object.
+            boundary: The alignment (2^k).
+            loc (GlobalAddr): 
+
+        Returns:
+            An AddrBlock object of the allocated memory.
+        """
+        addr = lib.hpx_gas_alloc_local_at_sync(num_block, 
+                                               num_object*dtype.itemsize, 
+                                               dtype, 
+                                               boundary, 
+                                               loc._addr)
+        total_size = num_block * num_object * dtype.itemsize
+        return AddrBlock(GlobalAddr(addr), total_size, dtype)
+
+    def try_pin(self):
+        """Performs address translation. See `Addr.try_pin` for detail.
+
+        Returns:
+            A numpy array representing this address block.
+        """
+        local_addr = self.addr.try_pin(return_local=True)
+        #TODO: construct numpy array
+
+    def unpin(self):
+        """Unpin this address block.
+        """
+        self.addr.unpin()
+
 
 # get numpy type for a user-specified C type
 def get_numpy_type(type_string):
@@ -198,55 +340,9 @@ def get_numpy_type(type_string):
         return np.uint64
     return np.dtype((np.void, ffi.sizeof(type_string)))
 
-def gas_memput_rsync(to_addr, from_addr, size):
-    from_addr_ptr = ffi.cast("void *", from_addr)
-    if lib.hpx_gas_memput_rsync(to_addr, from_addr_ptr, size) != SUCCESS:
-        raise RuntimeError("Fail to copy data from a local buffer to a global address")
-
-
-def gas_try_pin(addr, return_local=True):
-    """Performs address translation.
-
-    This will try to perform a global-to-local translation on the global @p
-    addr, and return the address in local virtual memory space if the pin is
-    successful and @p return_local is true.
-    
-    If @p addr is not local, or @p addr is local and return_local is true but 
-    the pin fails, this will raise an Runtime error.
-
-    Args:
-        addr: The address in global memory space to be translated.
-        return_local: Whether return the local virtual memory correspondence.
-
-    Returns:
-        Local memory which corresponds to the given global memory if successful
-        and return_local is true.
-
-    """
-    if return_local == True:
-        local = ffi.new("void **")
-        rtv = lib.hpx_gas_try_pin(addr, local)
-        if rtv == False:
-            raise RuntimeError("Pinning the global memory fails")
-        else:
-            return local[0]
-    else:
-        rtv = lib.hpx_gas_try_pin(addr, ffi.NULL)
-        if rtv == False:
-            raise RuntimeError("Pinning the global memory fails")
-
 
 def addr2buffer(addr, size):
     return ffi.buffer(addr, size)
-
-
-def gas_unpin(addr):
-    """Unpin a previously pinned block.
-
-    Args:
-        addr: The address of global memory to unpin.
-    """
-    lib.hpx_gas_unpin(addr)
 
 
 def lco_future_new(size):

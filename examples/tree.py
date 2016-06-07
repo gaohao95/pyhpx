@@ -5,18 +5,18 @@ import numpy as np
 particle_type = np.dtype([('pos', np.float64), ('mass', np.float64), ('phi', np.float64)])
 moment_type = np.dtype([('mtot', np.float64), ('xcom', np.float64), ('Q00', np.float64)])
 node_type = np.dtype([('left', hpx.get_numpy_type('hpx_addr_t')),
-					  ('right', hpx.get_numpy_type('hpx_addr_t')),
-					  ('low', np.float64),
-					  ('high', np.float64),
-					  ('moments', moment_type),
-					  ('parts', hpx.get_numpy_type('hpx_addr_t')),
-					  ('count', np.int32)])
+                      ('right', hpx.get_numpy_type('hpx_addr_t')),
+                      ('low', np.float64),
+                      ('high', np.float64),
+                      ('moments', moment_type),
+                      ('parts', hpx.get_numpy_type('hpx_addr_t')),
+                      ('count', np.int32)])
 
 locality_parameters = {}
 
 def main(argv):
 	try:
-		hpx.init(argv)
+        hpx.init(argv)
 	except RuntimeError:
 		hpx.print_help()
 		return
