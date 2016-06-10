@@ -162,7 +162,10 @@ def generate_c_arguments(action_id, *args):
     c_args = []
     for i in range(len(argument_types)):
         c_type = _c_def_map[argument_types[i]] + ' *'
-        c_args.append(ffi.new(c_type, args[i]))
+        if argument_types[i] == ADDR:
+            c_args.append(ffi.new(c_type, args[i]._addr))
+        else:
+            c_args.append(ffi.new(c_type, args[i]))
     return c_args
 
 
@@ -261,13 +264,13 @@ class GlobalAddr:
         """
         if return_local == True:
             local = ffi.new("void **")
-            rtv = lib.hpx_gas_try_pin(self.addr, local)
+            rtv = lib.hpx_gas_try_pin(self._addr, local)
             if rtv == False:
                 raise RuntimeError("Pinning the global memory fails")
             else:
                 return LocalAddr(local[0])
         else:
-            rtv = lib.hpx_gas_try_pin(self.addr, ffi.NULL)
+            rtv = lib.hpx_gas_try_pin(self._addr, ffi.NULL)
             if rtv == False:
                 raise RuntimeError("Pinning the global memory fails")
 
@@ -312,8 +315,7 @@ class AddrBlock:
             An AddrBlock object of the allocated memory.
         """
         addr = lib.hpx_gas_alloc_local_at_sync(num_block, 
-                                               num_object*dtype.itemsize, 
-                                               dtype, 
+                                               num_object*dtype.itemsize,
                                                boundary, 
                                                loc._addr)
         total_size = num_block * num_object * dtype.itemsize
@@ -326,7 +328,10 @@ class AddrBlock:
             A numpy array representing this address block.
         """
         local_addr = self.addr.try_pin(return_local=True)
-        #TODO: construct numpy array
+        print(local_addr._addr)
+        arr = np.frombuffer(ffi.buffer(local_addr._addr, self.size), dtype=self.dtype)
+        print(hex(arr.__array_interface__['data'][0]))
+        return arr
 
     def unpin(self):
         """Unpin this address block.
@@ -393,11 +398,11 @@ def call(addr, action_id, result, *args):
     in the future.
     
     Args:
-        addr: The address that defines where the action is executed.
+        addr (GlobalAddr): The address that defines where the action is executed.
         action: The action to perform.
         result: An address of an LCO to trigger with the result.
     """
     c_args = generate_c_arguments(action_id, *args)
-    rtv = lib._hpx_call(addr, action_id[0], result, len(c_args), *c_args)
+    rtv = lib._hpx_call(addr._addr, action_id[0], result, len(c_args), *c_args)
     if rtv != SUCCESS:
         raise RuntimeError("A problem occurs during the hpx_call invocation")
