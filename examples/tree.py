@@ -69,6 +69,15 @@ broadcast_domain_action = hpx.register_action(broadcast_domain_handler,
 
 
 def partition_node_handler(node, parts, n_parts, n_partition):
+    current_node = np.frombuffer(hpx.addr2buffer(node, node_type.itemsize), dtype=node_type)
+    
+    if n_parts <= n_partition:
+        current_node['parts'] = parts
+        current_node['count'] = n_parts
+        partsBlock = hpx.AddrBlock(hpx.GlobalAddr(parts), n_parts*particle_type.itemsize, particle_type)
+        # partsLocal = partsBlock.try_pin()
+        # partsBlock.unpin()
+
     return 0
 
 partition_node_action = hpx.register_action(partition_node_handler,
