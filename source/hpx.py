@@ -145,10 +145,21 @@ class DefaultAction(Action):
 
 # {{{ Runtime
 
-# Initializes the HPX runtime.
-# This must be called before other HPX functions.
-# TODO: remove hpx specifig flags in argv
 def init(argv=[]):
+    """Initializes the HPX runtime.
+    
+    This must be called before other HPX functions.  hpx_init() initializes the
+    scheduler, network, and locality and should be called before any other HPX
+    functions.
+
+    Args:
+        argv (list): List of command-line arguments.
+
+    Raises:
+        RuntimeError: If the initialization fails.
+    """
+    # TODO: remove hpx specifig flags in argv
+
     if len(argv) == 0:
         c_argc = ffi.NULL
         c_argv_address = ffi.NULL
@@ -161,22 +172,62 @@ def init(argv=[]):
             c_argv[i] = c_argv_obj[i]
         c_argv_address = ffi.new("char ***", c_argv)
     if lib.hpx_init(c_argc, c_argv_address) != SUCCESS:
-        raise RuntimeError("hpx_init failed")
+        raise RuntimeError("hpx.init failed")
 
 
-# Exit the HPX runtime.
-def exit(code):
-    lib.hpx_exit(code)
+def exit():
+    """Exit the HPX runtime.
+
+    This causes the hpx.run() in the main native thread to return the `code`. 
+    It is safe to call hpx.run() again after hpx.exit().
+  
+    This call does not imply that the HPX runtime has shut down. In particular,
+    system threads may continue to run and execute HPX high-speed network
+    progress or outstanding lightweight threads. Users should ensure that such
+    concurrent activity will not create detrimental data races in their
+    applications.
+  
+    Note:
+        While this routine does not guarantee to suspend the runtime,
+        high-performance implementations are expected to reduce their resource
+        consumption as a result of this call. In particular, runtime-spawned
+        system threads should be suspended.
+    """
+    lib.hpx_exit(lib.HPX_SUCCESS)
 
 
+def run(action, *args):
+    """Start an HPX main process.
+    
+    This collective creates an HPX "main" process, and calls the given `action`
+    entry in the context of this process.
 
+    The `entry` action is invoked only on the root locality and represents a
+    diffusing computation.
+    
+    The process does not use termination detection and must be terminated
+    through a single explicit call to hpx.exit().
 
-def run(action_id, *args):
-    c_args = generate_c_arguments(action_id, *args)
-    lib._hpx_run(action_id, len(c_args), *c_args)    
+    Args:
+        action (hpx.Action): An action to execute.
+        *args: The arguments of this action.
+
+    Raise:
+        RuntimeError
+    """
+    c_args = action._generate_c_arguments(*args)
+    if lib._hpx_run(action._id, len(c_args), *c_args) != lib.HPX_SUCCESS:
+        raise RuntimeError("hpx.run failed")
 
 
 def finalize():
+    """Finalize/cleanup from the HPX runtime.
+
+    This function will remove almost all data structures and allocations, and
+    will finalize the underlying network implementation. Note that hpx.run()
+    must never be called after hpx.finalize().
+
+    """
     lib.hpx_finalize()
 
 
