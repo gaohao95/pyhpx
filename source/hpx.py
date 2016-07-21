@@ -249,53 +249,53 @@ def bcast_rsync(action_id, *args):
     lib._hpx_process_broadcast_rsync(thread_current_pid(), action_id[0], len(c_args), *c_args)
 
 
-class LocalAddr:
-    def __init__(self, addr):
-        self._addr = addr
+class GlobalAddress:
 
-    def memput_rsync(self, global_addr, size):
-        """This copies data synchronously from a local buffer to a global 
-        address.
-
-        This shares the same functionality as hpx_gas_memput(), but will not
-        return until the write has completed remotely. This exposes the 
-        potential for a more efficient mechanism for synchronous operation, and
-        should be preferred where fully synchronous semantics are necessary.
-
-        Args:
-            global_addr (GlobalAddr): The global address to copy to
-            size (int): The size, in bytes, of the buffer to copy
-
-        Raises:
-            RuntimeError: If copy operation fails
-        """
-        from_addr_ptr = ffi.cast("void *", self._addr)
-        if lib.hpx_gas_memput_rsync(global_addr._addr, from_addr_ptr, size) != SUCCESS:
-            raise RuntimeError("Fail to copy data from a local buffer to a global address")
-
-
-class GlobalAddr:
-    def __init__(self, addr):
+    def __init__(self, addr, bsize=-1):
         """Constructor for GlobalAddr class.
 
         Args:
             addr (int): The address in global memory space
+            bsize (int): The block size used when allocating memory associated 
+                with `addr`.
         """
         self._addr = addr
+        self._bsize = bsize
 
-    def locality(locality_no):
+    @staticmethod
+    def THERE(locality_number):
         """ Get the global address representing some other locality, that is
         suitable for use as a parcel target.
 
         Args:
-            locality_no (int): The number of that locality
+            locality_number (int): The number of that locality
+
+        Note:
+            GlobalAddress object obtained from hpx.THERE cannot do arithmatic like 
+            add, substract, etc.
 
         Returns:
             An GlobalAddr object representing that locality
         """
-        return GlobalAddr(lib.HPX_THERE(locality_no))
+        return GlobalAddress(lib.HPX_THERE(locality_number))
+    
+    NULL = GlobalAddress(lib.HPX_NULL)
+    """GlobalAddress: The equivalent of NULL for global memory
 
-    NULL = lib.HPX_NULL
+    Note:
+        GlobalAddress object obtained from hpx.NULL cannot do arithmatic like
+        add, substract, etc.
+    """
+
+    HERE = GlobalAddress(lib.HPX_HERE)
+    """GlobalAddress: An address representing this locality in general, that is
+    suitable for use as a parcel target.
+
+    Note:
+        GlobalAddress object obtained from hpx.HERE cannot do arithmatic like
+        add, substract, etc.
+    """
+
 
     def try_pin(self, return_local=True):
         """Performs address translation.
