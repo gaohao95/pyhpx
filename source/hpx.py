@@ -248,6 +248,7 @@ def bcast_rsync(action_id, *args):
     c_args = generate_c_arguments(action_id, *args)
     lib._hpx_process_broadcast_rsync(thread_current_pid(), action_id[0], len(c_args), *c_args)
 
+# {{{ GlobalAddress
 
 class GlobalAddress:
 
@@ -261,41 +262,6 @@ class GlobalAddress:
         """
         self._addr = addr
         self._bsize = bsize
-
-    @staticmethod
-    def THERE(locality_number):
-        """ Get the global address representing some other locality, that is
-        suitable for use as a parcel target.
-
-        Args:
-            locality_number (int): The number of that locality
-
-        Note:
-            GlobalAddress object obtained from hpx.THERE cannot do arithmatic like 
-            add, substract, etc.
-
-        Returns:
-            An GlobalAddr object representing that locality
-        """
-        return GlobalAddress(lib.HPX_THERE(locality_number))
-    
-    NULL = GlobalAddress(lib.HPX_NULL)
-    """GlobalAddress: The equivalent of NULL for global memory
-
-    Note:
-        GlobalAddress object obtained from hpx.NULL cannot do arithmatic like
-        add, substract, etc.
-    """
-
-    HERE = GlobalAddress(lib.HPX_HERE)
-    """GlobalAddress: An address representing this locality in general, that is
-    suitable for use as a parcel target.
-
-    Note:
-        GlobalAddress object obtained from hpx.HERE cannot do arithmatic like
-        add, substract, etc.
-    """
-
 
     def try_pin(self, return_local=True):
         """Performs address translation.
@@ -333,6 +299,49 @@ class GlobalAddress:
         """
         lib.hpx_gas_unpin(self._addr)                
 
+def THERE(locality_number):
+    """ Get the global address representing some other locality, that is
+    suitable for use as a parcel target.
+
+    Args:
+        locality_number (int): The number of that locality
+
+    Note:
+        GlobalAddress object obtained from hpx.THERE cannot do arithmatic like 
+        add, substract, etc.
+
+    Returns:
+        An GlobalAddr object representing that locality
+    """
+    return GlobalAddress(lib.HPX_THERE(locality_number))
+   
+def NULL():
+    """ Get the equivalent of NULL for global memory
+
+    Note:
+        GlobalAddress object obtained from hpx.NULL cannot do arithmatic 
+        like add, substract, etc.
+    
+    Returns:
+        An GlobalAddress object representing the equivalent of NULL for
+        global memory.
+    """
+    return GlobalAddress(lib.HPX_NULL) 
+
+def HERE():
+    """ Get An address representing this locality in general, that is
+    suitable for use as a parcel target.
+
+    Note:
+        GlobalAddress object obtained from hpx.HERE cannot do arithmatic like
+        add, substract, etc.
+
+    Returns:
+        An GlobalAddress object representing this locality.
+    """
+    return GlobalAddress(lib.HPX_HERE)
+
+# }}}
 
 class AddrBlock:
     def __init__(self, addr, size, dtype):
