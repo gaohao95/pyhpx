@@ -343,8 +343,8 @@ def HERE():
 
 # }}}
 
-class AddrBlock:
-    def __init__(self, addr, size, dtype):
+class GlobalAddressBlock:
+    def __init__(self, addr, blockShape, dtype):
         """Constructor of AddrBlock class
 
         Args:
@@ -354,9 +354,9 @@ class AddrBlock:
             dtype (numpy.dtype): The type of each object in address block
 
         """
-        self.addr = addr
-        self.size = size
-        self.dtype = dtype
+        self._addr = addr
+        self._blockShape = blockShape
+        self._dtype = dtype
 
     def alloc_local_at_sync(num_block, num_object, dtype, boundary, loc):
         """Allocate blocks of global memory.
@@ -385,7 +385,7 @@ class AddrBlock:
         return AddrBlock(GlobalAddr(addr), total_size, dtype)
 
     def try_pin(self):
-        """Performs address translation. See `Addr.try_pin` for detail.
+        """ Performs address translation. See `Addr.try_pin` for detail.
 
         Returns:
             A numpy array representing this address block.
@@ -397,10 +397,78 @@ class AddrBlock:
         return arr
 
     def unpin(self):
-        """Unpin this address block.
+        """ Unpin this address block.
         """
         self.addr.unpin()
 
+
+def _calculate_block_size(blockShape, dtype):
+    """ Helper function for calculating block size for GAS allocation functions.
+    """
+    total_size = 1
+    for dim in blockShape:
+        total_size *= dim
+    return total_size * dtype.itemsize
+
+class GlobalMemory:
+
+    def __init__(self, addr, numBlock, blockShape, dtype):
+        self._addr = addr
+        self._numBlock = numBlock
+        self._blockShape = blockShape
+        self._dtype = dtype
+
+    @classmethod
+    def alloc_cyclic(cls, numBlock, blockShape, dtype, boundary=0):
+        """Allocate cyclically distributed global memory.
+        
+        Args:
+            numBlock (int): The number of blocks to allocate.
+            blockShape (tuple): The shape of each block.
+            dtype (numpy.dtype): The data type of each entry in the block.
+            boundary (int): The alignment.
+
+        Returns:
+            A GlobalMemory object representing the allocated memory.
+        """
+        block_size = _calculate_block_size(blockShape, dtype)
+        addr = lib.hpx_gas_alloc_cyclic(numBlock, block_size, boundary) 
+        return cls(addr, numBlock, blockShape, dtype)
+
+    @classmethod
+    def calloc_cyclic(cls, numBlock, blockShape, dtype, boundary=0):
+        """Allocate cyclically distributed global zeroed memory.
+        """
+        block_size = _calculate_block_size(blockShape, dtype)
+        addr = lib.hpx_gas_calloc_cyclic(numBlock, block_size, boundary)
+        return cls(addr, numBlock, blockShape, dtype)
+
+    @classmethod
+    def alloc_local_at_sync(cls, numBlock, blockShape, dtype, loc, boundary=0):
+        """Allocate a block of global memory.
+
+        This is a non-collective call to allocate memory in the global
+        address space that can be moved. The allocated memory, by default,
+        has affinity to the allocating node, however in low memory conditions the
+        allocated memory may not be local to the caller. As it allocated in the GAS,
+        it is accessible from any locality, and may be relocated by the
+        runtime.
+        
+        Args:
+            loc (GlobalAddress): The address which the allocation targets.
+        """
+        block_size = _calculate_block_size(blockShape, dtype)
+        addr = lib.hpx_gas_alloc_local_at_sync(numBlock, block_size, boundary, loc._addr)
+        return cls(addr, numBlock, blockShape, dtype)
+    
+    @classmethod
+    def alloc_local_at_async(cls, numBlock, blockShape, dtype, loc, lco, boundary=0):
+        """Allocate a block of global memory asynchronously
+        """
+        block_size = _calculate_block_size(blockShape, dtype)
+        addr = lib.hpx_gas_alloc_local_at_async(numBlock, block_size, boundary, 
+                                                loc._addr, lco._addr)
+        return cls(addr, numBlock, blockShape, dtype)
 
 # get numpy type for a user-specified C type
 def get_numpy_type(type_string):

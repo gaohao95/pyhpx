@@ -152,8 +152,8 @@ hpx_pid_t hpx_thread_current_pid(void);
 /* End thread.h */
 
 /* Begin gas.h */
-
-hpx_addr_t hpx_gas_alloc_local(size_t n, uint32_t bsize, uint32_t boundary);
+hpx_addr_t hpx_gas_alloc_cyclic(size_t n, size_t bsize, uint32_t boundary);
+hpx_addr_t hpx_gas_calloc_cyclic(size_t n, size_t bsize, uint32_t boundary);
 hpx_addr_t hpx_gas_alloc_local_at_sync(size_t n, uint32_t bsize, uint32_t boundary,
                                        hpx_addr_t loc);
 void hpx_gas_alloc_local_at_async(size_t n, uint32_t bsize, uint32_t boundary,
