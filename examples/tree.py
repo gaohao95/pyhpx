@@ -75,8 +75,8 @@ def partition_node_handler(node, parts, n_parts, n_partition):
         current_node['parts'] = parts
         current_node['count'] = n_parts
         partsBlock = hpx.AddrBlock(hpx.GlobalAddr(parts), n_parts*particle_type.itemsize, particle_type)
-        # partsLocal = partsBlock.try_pin()
-        # partsBlock.unpin()
+        partsLocal = partsBlock.try_pin()
+        partsBlock.unpin()
 
     return 0
 

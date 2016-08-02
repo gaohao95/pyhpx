@@ -94,36 +94,30 @@ PINNED = lib.HPX_PINNED
 # }}}
 
 
+class BaseAction(metaclass=ABCMeta):
 
-
-class Action(metaclass=ABCMeta):
-
-    @classmethod
-    @abstractmethod
-    def register(cls, python_func, action_type, action_attribute, action_key, action_arguments):
+    def __init__(self, python_func, action_type, action_attribute, action_key, action_arguments):
         """Register an HPX action.
         
         Note:
             This must be called prior to hpx_init().
 
         Args:
-            action: A Python function to be registered as a HPX action
+            python_func: A Python function to be registered as a HPX action
             action_type: Type of the action.
             action_attribute: Attributes of the action. 
             action_key: A Python byte object to be specified as key for this action.
             action_arguments: A Python list of argument types.
         """
-        obj = cls()
-        obj._id = ffi.new("hpx_action_t *")
-        obj._arguments_cdef = []
+        self._id = ffi.new("hpx_action_t *")
+        self._arguments_cdef = []
         for argument in action_arguments:
-            obj._arguments_cdef.append(_c_def_map[argument])
-        obj._ffi_func = ffi.callback("int(" + ",".join(obj._arguments_cdef) + ")")(python_func)
+            self._arguments_cdef.append(_c_def_map[argument])
+        self._ffi_func = ffi.callback("int(" + ",".join(self._arguments_cdef) + ")")(python_func)
         lib.hpx_register_action(action_type, action_attribute, action_key,
-                                obj._id, len(action_arguments) + 1, 
-                                obj._ffi_func, *action_arguments)
-        obj._attribute = action_attribute
-        return obj
+                                self._id, len(action_arguments) + 1, 
+                                self._ffi_func, *action_arguments)
+        self._attribute = action_attribute
 
     # Helper function for generating C arguments for this action
     def _generate_c_arguments(self, *args):
@@ -133,11 +127,10 @@ class Action(metaclass=ABCMeta):
             c_args.append(ffi.new(c_type, args[i]))
         return c_args
 
-class DefaultAction(Action):
+class Action(BaseAction):
     
-    @classmethod
-    def register(cls, python_func, action_attribute, action_key, action_arguments):
-        return super(DefaultAction, cls).register(python_func, lib.HPX_DEFAULT, 
+    def __init__(self, python_func, action_attribute, action_key, action_arguments):
+        return super(Action, self).__init__(python_func, lib.HPX_DEFAULT, 
                                                   action_attribute, action_key, 
                                                   action_arguments)
 
@@ -358,43 +351,24 @@ class GlobalAddressBlock:
         self._blockShape = blockShape
         self._dtype = dtype
 
-    def alloc_local_at_sync(num_block, num_object, dtype, boundary, loc):
-        """Allocate blocks of global memory.
-
-        This function allocates memory in the global address space that can be 
-        moved. The allocated memory, by default, has affinity to the allocating 
-        node, however in low memory conditions the allocated memory may not be 
-        local to the caller. As it allocated in the GAS, it is accessible from 
-        any locality, and may be relocated by the runtime.
-
-        Args:
-            num_block (int): The number of blocks to allocate.
-            num_object (int): The number of objects per block.
-            dtype (numpy.dtype): The type of each object.
-            boundary: The alignment (2^k).
-            loc (GlobalAddr): 
-
-        Returns:
-            An AddrBlock object of the allocated memory.
-        """
-        addr = lib.hpx_gas_alloc_local_at_sync(num_block, 
-                                               num_object*dtype.itemsize,
-                                               boundary, 
-                                               loc._addr)
-        total_size = num_block * num_object * dtype.itemsize
-        return AddrBlock(GlobalAddr(addr), total_size, dtype)
-
-    def try_pin(self):
+    def try_pin(self, return_local=True):
         """ Performs address translation. See `Addr.try_pin` for detail.
 
         Returns:
             A numpy array representing this address block.
         """
-        local_addr = self.addr.try_pin(return_local=True)
-        print(local_addr._addr)
-        arr = np.frombuffer(ffi.buffer(local_addr._addr, self.size), dtype=self.dtype)
-        print(hex(arr.__array_interface__['data'][0]))
-        return arr
+        if return_local == True:
+            local = ffi.new("void **")
+            rtv = lib.hpx_gas_try_pin(self._addr, local)
+            if rtv == False:
+                raise RuntimeError("Pinning the global memory fails")
+            # else:
+                # block
+                # return np.frombuffer(ffi.buffer(local[0], ), dtype=)
+        else:
+            rtv = lib.hpx_gas_try_pin(self._addr, ffi.NULL)
+            if rtv == False:
+                raise RuntimeError("Pinning the global memory fails")
 
     def unpin(self):
         """ Unpin this address block.
@@ -469,6 +443,14 @@ class GlobalMemory:
         addr = lib.hpx_gas_alloc_local_at_async(numBlock, block_size, boundary, 
                                                 loc._addr, lco._addr)
         return cls(addr, numBlock, blockShape, dtype)
+
+    def free(self, lco):
+        """Free the global allocation associated with this object.
+        """
+        lib.hpx_gas_free(self._addr, lco._addr)
+
+    def free_sync(self):
+        lib.hpx_gas_free_sync(self._addr)
 
 # get numpy type for a user-specified C type
 def get_numpy_type(type_string):

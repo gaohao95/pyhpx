@@ -158,6 +158,8 @@ hpx_addr_t hpx_gas_alloc_local_at_sync(size_t n, uint32_t bsize, uint32_t bounda
                                        hpx_addr_t loc);
 void hpx_gas_alloc_local_at_async(size_t n, uint32_t bsize, uint32_t boundary,
                                   hpx_addr_t loc, hpx_addr_t lco);
+void hpx_gas_free(hpx_addr_t addr, hpx_addr_t rsync);
+void hpx_gas_free_sync(hpx_addr_t addr);
 int hpx_gas_memput_rsync(hpx_addr_t to, const void *from, size_t size);
 bool hpx_gas_try_pin(hpx_addr_t addr, void **local);
 void hpx_gas_unpin(hpx_addr_t addr);
