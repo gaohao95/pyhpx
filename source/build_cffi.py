@@ -71,9 +71,9 @@ hpx_type_t HPX_FLOAT_lvalue;
 hpx_type_t HPX_DOUBLE_lvalue;
 hpx_type_t HPX_POINTER_lvalue;
 hpx_type_t HPX_LONGDOUBLE_lvalue;
-hpx_type_t HPX_COMPLEX_FLOAT_lvalue;
-hpx_type_t HPX_COMPLEX_DOUBLE_lvalue;
-hpx_type_t HPX_COMPLEX_LONGDOUBLE_lvalue;
+// hpx_type_t HPX_COMPLEX_FLOAT_lvalue;
+// hpx_type_t HPX_COMPLEX_DOUBLE_lvalue;
+// hpx_type_t HPX_COMPLEX_LONGDOUBLE_lvalue;
 hpx_type_t HPX_ADDR_lvalue;
 
 /* End types.h */
@@ -211,9 +211,9 @@ hpx_type_t HPX_FLOAT_lvalue = HPX_FLOAT;
 hpx_type_t HPX_DOUBLE_lvalue = HPX_DOUBLE;
 hpx_type_t HPX_POINTER_lvalue = HPX_POINTER;
 hpx_type_t HPX_LONGDOUBLE_lvalue = HPX_LONGDOUBLE;
-hpx_type_t HPX_COMPLEX_FLOAT_lvalue = HPX_COMPLEX_FLOAT;
-hpx_type_t HPX_COMPLEX_DOUBLE_lvalue = HPX_COMPLEX_DOUBLE;
-hpx_type_t HPX_COMPLEX_LONGDOUBLE_lvalue = HPX_COMPLEX_LONGDOUBLE;
+// hpx_type_t HPX_COMPLEX_FLOAT_lvalue = HPX_COMPLEX_FLOAT;
+// hpx_type_t HPX_COMPLEX_DOUBLE_lvalue = HPX_COMPLEX_DOUBLE;
+// hpx_type_t HPX_COMPLEX_LONGDOUBLE_lvalue = HPX_COMPLEX_LONGDOUBLE;
 hpx_type_t HPX_ADDR_lvalue = HPX_ADDR;
 """,
                libraries=compile_libraries,
