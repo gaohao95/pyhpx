@@ -4,6 +4,7 @@ sys.setdlopenflags(os.RTLD_GLOBAL | os.RTLD_LAZY)
 from build._hpx import ffi, lib
 import numpy as np
 from abc import ABCMeta, abstractmethod
+from collections import deque
 
 # {{{ Define HPX status
 ERROR = lib.HPX_ERROR
@@ -407,6 +408,11 @@ class GlobalMemory:
         self.numBlock = numBlock
         self.blockShape = blockShape
         self.dtype = dtype
+        
+        strides = deque([dtype.itemsize])
+        for i in range(len(blockShape)-1, -1, -1):
+            strides.appendleft(strides[0] * blockShape[i])
+        self.strides = tuple(strides)
 
     @classmethod
     def alloc_cyclic(cls, numBlock, blockShape, dtype, boundary=0):
@@ -469,9 +475,14 @@ class GlobalMemory:
         lib.hpx_gas_free_sync(self.addr)
 
     def __getitem__(self, key):
-        if type(key) is int:
+        if type(key) is tuple:
+            firstdim = key[0]
+        else:
+            firstdim = key
+
+        if type(firstdim) is int:
             pass
-        elif type(key) is slice:
+        elif type(firstdim) is slice:
             pass
         else:
             raise TypeError("Invalid key type")
