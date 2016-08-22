@@ -45,7 +45,7 @@ COMPLEX_FLOAT = lib.HPX_COMPLEX_FLOAT_lvalue
 COMPLEX_DOUBLE = lib.HPX_COMPLEX_DOUBLE_lvalue
 COMPLEX_LONGDOUBLE = lib.HPX_COMPLEX_LONGDOUBLE_lvalue
 # ADDR = lib.HPX_ADDR_lvalue
-# }}}za
+# }}}
 
 # {{{ Define a dictionary to map argument types to C definition
 _c_def_map = {
@@ -96,6 +96,7 @@ PINNED = lib.HPX_PINNED
 
 class BaseAction(metaclass=ABCMeta):
 
+    @abstractmethod
     def __init__(self, python_func, action_type, action_attribute, action_key, action_arguments):
         """Register an HPX action.
         
@@ -253,8 +254,24 @@ class GlobalAddress:
             bsize (int): The block size used when allocating memory associated 
                 with `addr`.
         """
-        self._addr = addr
-        self._bsize = bsize
+        self.addr = addr
+        self.bsize = bsize
+
+    def __add__(self, bytes):
+        """Perform global address displacement arithmetic.
+
+        Get the address of `bytes` into memory with address `addr`. As with 
+        normal C pointer arithmetic, the `bytes` displacement must result in an
+        address associated with the same allocation as `addr`, or 
+        one-off-the-end if the allocation was an array.
+        """
+        return GlobalAddress(lib.hpx_addr_add(self.addr, bytes, self.bsize), 
+                             self.bsize)
+
+    def __radd__(self, bytes):
+        """See GlobalAddress.__add__ for details.
+        """
+        return self.__add__(bytes)
 
     def try_pin(self, return_local=True):
         """Performs address translation.
@@ -272,8 +289,8 @@ class GlobalAddress:
                 memory correspondence.
 
         Returns:
-            An LocalAddr object representing local memory which corresponds to 
-            the given global memory if successful and `return_local` is true.
+            Local memory which corresponds to the given global memory if 
+            successful and `return_local` is true.
         """
         if return_local == True:
             local = ffi.new("void **")
@@ -281,7 +298,7 @@ class GlobalAddress:
             if rtv == False:
                 raise RuntimeError("Pinning the global memory fails")
             else:
-                return LocalAddr(local[0])
+                return local[0]
         else:
             rtv = lib.hpx_gas_try_pin(self._addr, ffi.NULL)
             if rtv == False:
@@ -290,7 +307,7 @@ class GlobalAddress:
     def unpin(self):
         """Unpin this address.
         """
-        lib.hpx_gas_unpin(self._addr)                
+        lib.hpx_gas_unpin(self.addr)                
 
 def THERE(locality_number):
     """ Get the global address representing some other locality, that is
@@ -337,7 +354,7 @@ def HERE():
 # }}}
 
 class GlobalAddressBlock:
-    def __init__(self, addr, blockShape, dtype):
+    def __init__(self, addr, shape, dtype):
         """Constructor of AddrBlock class
 
         Args:
@@ -345,11 +362,10 @@ class GlobalAddressBlock:
             size (int): Total size of this address block, must be a multiple of
                 the size of `dtype`.
             dtype (numpy.dtype): The type of each object in address block
-
         """
-        self._addr = addr
-        self._blockShape = blockShape
-        self._dtype = dtype
+        self.addr = addr
+        self.shape = shape
+        self.dtype = dtype
 
     def try_pin(self, return_local=True):
         """ Performs address translation. See `Addr.try_pin` for detail.
@@ -359,14 +375,14 @@ class GlobalAddressBlock:
         """
         if return_local == True:
             local = ffi.new("void **")
-            rtv = lib.hpx_gas_try_pin(self._addr, local)
+            rtv = lib.hpx_gas_try_pin(self.addr, local)
             if rtv == False:
                 raise RuntimeError("Pinning the global memory fails")
             # else:
                 # block
                 # return np.frombuffer(ffi.buffer(local[0], ), dtype=)
         else:
-            rtv = lib.hpx_gas_try_pin(self._addr, ffi.NULL)
+            rtv = lib.hpx_gas_try_pin(self.addr, ffi.NULL)
             if rtv == False:
                 raise RuntimeError("Pinning the global memory fails")
 
@@ -387,10 +403,10 @@ def _calculate_block_size(blockShape, dtype):
 class GlobalMemory:
 
     def __init__(self, addr, numBlock, blockShape, dtype):
-        self._addr = addr
-        self._numBlock = numBlock
-        self._blockShape = blockShape
-        self._dtype = dtype
+        self.addr = addr
+        self.numBlock = numBlock
+        self.blockShape = blockShape
+        self.dtype = dtype
 
     @classmethod
     def alloc_cyclic(cls, numBlock, blockShape, dtype, boundary=0):
@@ -432,7 +448,7 @@ class GlobalMemory:
             loc (GlobalAddress): The address which the allocation targets.
         """
         block_size = _calculate_block_size(blockShape, dtype)
-        addr = lib.hpx_gas_alloc_local_at_sync(numBlock, block_size, boundary, loc._addr)
+        addr = lib.hpx_gas_alloc_local_at_sync(numBlock, block_size, boundary, loc.addr)
         return cls(addr, numBlock, blockShape, dtype)
     
     @classmethod
@@ -441,16 +457,28 @@ class GlobalMemory:
         """
         block_size = _calculate_block_size(blockShape, dtype)
         addr = lib.hpx_gas_alloc_local_at_async(numBlock, block_size, boundary, 
-                                                loc._addr, lco._addr)
+                                                loc.addr, lco.addr)
         return cls(addr, numBlock, blockShape, dtype)
 
     def free(self, lco):
         """Free the global allocation associated with this object.
         """
-        lib.hpx_gas_free(self._addr, lco._addr)
+        lib.hpx_gas_free(self.addr, lco.addr)
 
     def free_sync(self):
-        lib.hpx_gas_free_sync(self._addr)
+        lib.hpx_gas_free_sync(self.addr)
+
+    def __getitem__(self, key):
+        if type(key) is int:
+            pass
+        elif type(key) is slice:
+            pass
+        else:
+            raise TypeError("Invalid key type")
+
+    def _check_index(self, index):
+        if index >= self.numBlock:
+            raise IndexError("Invalid index")
 
 # get numpy type for a user-specified C type
 def get_numpy_type(type_string):

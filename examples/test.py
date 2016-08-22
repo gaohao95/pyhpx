@@ -1,7 +1,8 @@
 import hpx
 
-@hpx.Action
-def add(a: int, b: int) -> int:
+# @hpx.Action
+# def add(a: int, b: int) -> int:
+def add(a, b):
     print(a+b)
     hpx.exit()
 
