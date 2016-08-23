@@ -404,7 +404,7 @@ def _calculate_block_size(blockShape, dtype):
 class GlobalMemory:
 
     def __init__(self, addr, numBlock, blockShape, dtype):
-        self.addr = addr
+        self.addr = GlobalAddress(addr, _calculate_block_size(blockShape, dtype))
         self.numBlock = numBlock
         self.blockShape = blockShape
         self.dtype = dtype
@@ -476,16 +476,30 @@ class GlobalMemory:
 
     def __getitem__(self, key):
         if type(key) is tuple:
-            firstdim = key[0]
-        else:
+            if len(key) == 0:
+                return self
+            if type(key[0]) is int:
+                return GlobalAddressBlock(self.addr + key[0] * strides[0],
+                        self.blockShape, self.dtype)[key[1:]]
+            elif type(key[0]) is slice:
+                newaddr = self.addr + key[0] * strides[0]
+                newNumBlock = key[0].end - key[0].start + 1
+                newBlockShape = []
+                for i in range(1, len(key)):
+                    newshape.append(key[i].end - key[i].start + 1)
+                newshape = tuple(newshape)
+                pass
+        elif type(key) is int:
             firstdim = key
-
-        if type(firstdim) is int:
-            pass
-        elif type(firstdim) is slice:
-            pass
+        elif key == None:
+            return self
         else:
             raise TypeError("Invalid key type")
+
+        if type(firstdim) is int:
+            return GlobalAddressBlock
+        elif type(firstdim) is slice:
+            return GlobalMemory()
 
     def _check_index(self, index):
         if index >= self.numBlock:
