@@ -403,16 +403,26 @@ def _calculate_block_size(blockShape, dtype):
 
 class GlobalMemory:
 
-    def __init__(self, addr, numBlock, blockShape, dtype):
-        self.addr = GlobalAddress(addr, _calculate_block_size(blockShape, dtype))
+    def __init__(self, addr, numBlock, blockShape, dtype, strides):
+        """
+        Args:
+            addr (GlobalAddress): A GlobalAddress object representing the 
+                beginning of this chunk of memory.
+            strides (tuple): Memory offset for each dimension. This should not
+                change after the initial allocation.
+        """
+        # self.addr = GlobalAddress(addr, _calculate_block_size(blockShape, dtype))
+        self.addr = addr
         self.numBlock = numBlock
         self.blockShape = blockShape
         self.dtype = dtype
+        self.strides = strides
         
+    def _calculate_strides(blockShape, dtype):
         strides = deque([dtype.itemsize])
         for i in range(len(blockShape)-1, -1, -1):
             strides.appendleft(strides[0] * blockShape[i])
-        self.strides = tuple(strides)
+        return tuple(strides)
 
     @classmethod
     def alloc_cyclic(cls, numBlock, blockShape, dtype, boundary=0):
@@ -428,8 +438,10 @@ class GlobalMemory:
             A GlobalMemory object representing the allocated memory.
         """
         block_size = _calculate_block_size(blockShape, dtype)
-        addr = lib.hpx_gas_alloc_cyclic(numBlock, block_size, boundary) 
-        return cls(addr, numBlock, blockShape, dtype)
+        addr = lib.hpx_gas_alloc_cyclic(numBlock, block_size, boundary)
+        strides = GlobalMemory._calculate_strides(blockShape, dtype)
+        return cls(GlobalAddress(addr, block_size), 
+                   numBlock, blockShape, dtype, strides)
 
     @classmethod
     def calloc_cyclic(cls, numBlock, blockShape, dtype, boundary=0):
@@ -437,7 +449,9 @@ class GlobalMemory:
         """
         block_size = _calculate_block_size(blockShape, dtype)
         addr = lib.hpx_gas_calloc_cyclic(numBlock, block_size, boundary)
-        return cls(addr, numBlock, blockShape, dtype)
+        strides = GlobalMemory._calculate_strides(blockShape, dtype)
+        return cls(GlobalAddress(addr, block_size), 
+                   numBlock, blockShape, dtype, strides)
 
     @classmethod
     def alloc_local_at_sync(cls, numBlock, blockShape, dtype, loc, boundary=0):
@@ -455,8 +469,10 @@ class GlobalMemory:
         """
         block_size = _calculate_block_size(blockShape, dtype)
         addr = lib.hpx_gas_alloc_local_at_sync(numBlock, block_size, boundary, loc.addr)
-        return cls(addr, numBlock, blockShape, dtype)
-    
+        strides = GlobalMemory._calculate_strides(blockShape, dtype)
+        return cls(GlobalAddress(addr, block_size), 
+                   numBlock, blockShape, dtype, strides)
+
     @classmethod
     def alloc_local_at_async(cls, numBlock, blockShape, dtype, loc, lco, boundary=0):
         """Allocate a block of global memory asynchronously
@@ -464,7 +480,9 @@ class GlobalMemory:
         block_size = _calculate_block_size(blockShape, dtype)
         addr = lib.hpx_gas_alloc_local_at_async(numBlock, block_size, boundary, 
                                                 loc.addr, lco.addr)
-        return cls(addr, numBlock, blockShape, dtype)
+        strides = GlobalMemory._calculate_strides(blockShape, dtype)
+        return cls(GlobalAddress(addr, block_size), 
+                   numBlock, blockShape, dtype, strides)
 
     def free(self, lco):
         """Free the global allocation associated with this object.
@@ -479,27 +497,31 @@ class GlobalMemory:
             if len(key) == 0:
                 return self
             if type(key[0]) is int:
-                return GlobalAddressBlock(self.addr + key[0] * strides[0],
+                return GlobalAddressBlock(self.addr + key[0] * self.strides[0],
                         self.blockShape, self.dtype)[key[1:]]
             elif type(key[0]) is slice:
-                newaddr = self.addr + key[0] * strides[0]
-                newNumBlock = key[0].end - key[0].start + 1
+                newaddr = self.addr + key[0].start * self.strides[0]
+                newNumBlock = key[0].stop - key[0].start
                 newBlockShape = []
                 for i in range(1, len(key)):
-                    newshape.append(key[i].end - key[i].start + 1)
-                newshape = tuple(newshape)
-                pass
+                    newBlockShape.append(key[i].stop - key[i].start)
+                newBlockShape = tuple(newBlockShape)
+                return GlobalMemory(newaddr, newNumBlock, newBlockShape, 
+                    self.dtype, self.strides)
+            else:
+                raise TypeError("Invalid key type")
+        elif type(key) is slice:
+            newaddr = self.addr + key.start * self.strides[0]
+            newNumBlock = key.stop - key.start
+            return GlobalMemory(newaddr, newNumBlock, self.blockShape, 
+                self.dtype, self.strides)
         elif type(key) is int:
-            firstdim = key
+            return GlobalAddressBlock(self.addr + key * self.strides[0],
+                    self.blockShape, self.dtype)
         elif key == None:
             return self
         else:
             raise TypeError("Invalid key type")
-
-        if type(firstdim) is int:
-            return GlobalAddressBlock
-        elif type(firstdim) is slice:
-            return GlobalMemory()
 
     def _check_index(self, index):
         if index >= self.numBlock:
