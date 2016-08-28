@@ -533,17 +533,8 @@ class GlobalMemory:
             else:
                 raise TypeError("Invalid key type")
         elif type(key) is slice:
-            if key.start == None:
-                start = 0
-            else:
-                start = key.start
-            if key.stop == None:
-                key.stop = self.numBlock
-            else:
-                stop = key.stop
-            newaddr = self.addr + start * self.strides[0]
-            newNumBlock = stop - start
-            return GlobalMemory(newaddr, newNumBlock, self.blockShape, 
+            newAddr, newNumBlock = self._firstdim_is_slice(key)
+            return GlobalMemory(newAddr, newNumBlock, self.blockShape, 
                 self.dtype, self.strides)
         elif type(key) is int:
             return GlobalAddressBlock(self.addr + key * self.strides[0],
