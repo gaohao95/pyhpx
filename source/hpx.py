@@ -403,13 +403,14 @@ def _calculate_block_size(blockShape, dtype):
 
 class GlobalMemory:
 
-    def __init__(self, addr, numBlock, blockShape, dtype, strides):
+    def __init__(self, addr, numBlock, blockShape, dtype, strides, offset):
         """
         Args:
             addr (GlobalAddress): A GlobalAddress object representing the 
                 beginning of this chunk of memory.
-            strides (tuple): Memory offset for each dimension. This should not
-                change after the initial allocation.
+            strides (tuple): Memory increment for each dimension. This should
+                not change after the initial allocation.
+            offset (tuple): Memory offset for each dimension. 
         """
         # self.addr = GlobalAddress(addr, _calculate_block_size(blockShape, dtype))
         self.addr = addr
@@ -417,6 +418,7 @@ class GlobalMemory:
         self.blockShape = blockShape
         self.dtype = dtype
         self.strides = strides
+        self.offset = offset
         
     def _calculate_strides(blockShape, dtype):
         strides = deque([dtype.itemsize])
@@ -440,8 +442,8 @@ class GlobalMemory:
         block_size = _calculate_block_size(blockShape, dtype)
         addr = lib.hpx_gas_alloc_cyclic(numBlock, block_size, boundary)
         strides = GlobalMemory._calculate_strides(blockShape, dtype)
-        return cls(GlobalAddress(addr, block_size), 
-                   numBlock, blockShape, dtype, strides)
+        return cls(GlobalAddress(addr, block_size), numBlock, blockShape, 
+            dtype, strides, (0,)*(len(blockShape) + 1))
 
     @classmethod
     def calloc_cyclic(cls, numBlock, blockShape, dtype, boundary=0):
@@ -450,8 +452,8 @@ class GlobalMemory:
         block_size = _calculate_block_size(blockShape, dtype)
         addr = lib.hpx_gas_calloc_cyclic(numBlock, block_size, boundary)
         strides = GlobalMemory._calculate_strides(blockShape, dtype)
-        return cls(GlobalAddress(addr, block_size), 
-                   numBlock, blockShape, dtype, strides)
+        return cls(GlobalAddress(addr, block_size), numBlock, blockShape, 
+            dtype, strides, (0,)*(len(blockShape) + 1))
 
     @classmethod
     def alloc_local_at_sync(cls, numBlock, blockShape, dtype, loc, boundary=0):
@@ -470,8 +472,8 @@ class GlobalMemory:
         block_size = _calculate_block_size(blockShape, dtype)
         addr = lib.hpx_gas_alloc_local_at_sync(numBlock, block_size, boundary, loc.addr)
         strides = GlobalMemory._calculate_strides(blockShape, dtype)
-        return cls(GlobalAddress(addr, block_size), 
-                   numBlock, blockShape, dtype, strides)
+        return cls(GlobalAddress(addr, block_size), numBlock, blockShape, 
+            dtype, strides, (0,)*(len(blockShape) + 1))
 
     @classmethod
     def alloc_local_at_async(cls, numBlock, blockShape, dtype, loc, lco, boundary=0):
@@ -481,8 +483,8 @@ class GlobalMemory:
         addr = lib.hpx_gas_alloc_local_at_async(numBlock, block_size, boundary, 
                                                 loc.addr, lco.addr)
         strides = GlobalMemory._calculate_strides(blockShape, dtype)
-        return cls(GlobalAddress(addr, block_size), 
-                   numBlock, blockShape, dtype, strides)
+        return cls(GlobalAddress(addr, block_size), numBlock, blockShape, 
+            dtype, strides, (0,)*(len(blockShape) + 1))
 
     def free(self, lco):
         """Free the global allocation associated with this object.
@@ -492,6 +494,27 @@ class GlobalMemory:
     def free_sync(self):
         lib.hpx_gas_free_sync(self.addr)
 
+    def _check_index(self, index):
+        if index >= self.numBlock:
+            raise IndexError("Invalid index")
+    
+    def _currentdim_is_slice(sliceObj, dimLimit):
+        if sliceObj.start == None:
+            start = 0
+        else:
+            start = sliceObj.start
+        if sliceObj.stop == None:
+            stop = dimLimit
+        else:
+            stop = sliceObj.stop
+        return start, stop
+
+    def _firstdim_is_slice(self, sliceObj):
+        start, stop = _currentdim_is_slice(sliceObj, self.numBlock)
+        newAddr = self.addr + start * self.strides[0]
+        newNumBlock = stop - start
+        return newAddr, newNumBlock
+
     def __getitem__(self, key):
         if type(key) is tuple:
             if len(key) == 0:
@@ -500,19 +523,26 @@ class GlobalMemory:
                 return GlobalAddressBlock(self.addr + key[0] * self.strides[0],
                         self.blockShape, self.dtype)[key[1:]]
             elif type(key[0]) is slice:
-                newaddr = self.addr + key[0].start * self.strides[0]
-                newNumBlock = key[0].stop - key[0].start
+                newAddr, newNumBlock = self._firstdim_is_slice(key[0])
                 newBlockShape = []
                 for i in range(1, len(key)):
                     newBlockShape.append(key[i].stop - key[i].start)
                 newBlockShape = tuple(newBlockShape)
-                return GlobalMemory(newaddr, newNumBlock, newBlockShape, 
+                return GlobalMemory(newAddr, newNumBlock, newBlockShape, 
                     self.dtype, self.strides)
             else:
                 raise TypeError("Invalid key type")
         elif type(key) is slice:
-            newaddr = self.addr + key.start * self.strides[0]
-            newNumBlock = key.stop - key.start
+            if key.start == None:
+                start = 0
+            else:
+                start = key.start
+            if key.stop == None:
+                key.stop = self.numBlock
+            else:
+                stop = key.stop
+            newaddr = self.addr + start * self.strides[0]
+            newNumBlock = stop - start
             return GlobalMemory(newaddr, newNumBlock, self.blockShape, 
                 self.dtype, self.strides)
         elif type(key) is int:
@@ -522,10 +552,6 @@ class GlobalMemory:
             return self
         else:
             raise TypeError("Invalid key type")
-
-    def _check_index(self, index):
-        if index >= self.numBlock:
-            raise IndexError("Invalid index")
 
 # get numpy type for a user-specified C type
 def get_numpy_type(type_string):
