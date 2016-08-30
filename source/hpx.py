@@ -354,8 +354,19 @@ def HERE():
 
 # }}}
 
+def _currentdim_is_slice(sliceObj, dimLimit, dimStride, dimOffset):
+    if sliceObj.start == None:
+        start = 0
+    else:
+        start = sliceObj.start
+    if sliceObj.stop == None:
+        stop = dimLimit
+    else:
+        stop = sliceObj.stop
+    return stop - start, dimOffset + start * dimStride
+
 class GlobalAddressBlock:
-    def __init__(self, addr, shape, dtype):
+    def __init__(self, addr, shape, dtype, strides, offset):
         """Constructor of AddrBlock class
 
         Args:
@@ -367,6 +378,8 @@ class GlobalAddressBlock:
         self.addr = addr
         self.shape = shape
         self.dtype = dtype
+        self.strides = strides
+        self.offset = offset
 
     def try_pin(self, return_local=True):
         """ Performs address translation. See `Addr.try_pin` for detail.
@@ -403,22 +416,22 @@ def _calculate_block_size(blockShape, dtype):
 
 class GlobalMemory:
 
-    def __init__(self, addr, numBlock, blockShape, dtype, strides, offset):
+    def __init__(self, addr, numBlock, blockShape, dtype, strides, offsets):
         """
         Args:
             addr (GlobalAddress): A GlobalAddress object representing the 
-                beginning of this chunk of memory.
+                beginning of the allocated memory. Indexing should not change 
+                this value.
             strides (tuple): Memory increment for each dimension. This should
                 not change after the initial allocation.
             offset (tuple): Memory offset for each dimension. 
         """
         # self.addr = GlobalAddress(addr, _calculate_block_size(blockShape, dtype))
         self.addr = addr
-        self.numBlock = numBlock
-        self.blockShape = blockShape
+        self.shape = (numBlock,) + blockShape 
         self.dtype = dtype
         self.strides = strides
-        self.offset = offset
+        self.offsets = offsets
         
     def _calculate_strides(blockShape, dtype):
         strides = deque([dtype.itemsize])
@@ -488,57 +501,63 @@ class GlobalMemory:
 
     def free(self, lco):
         """Free the global allocation associated with this object.
+
+        Note that even if the current object is created by indexing, and hence 
+        only part of the initial allocation, all memory of the initial 
+        allocation will be freed.
         """
-        lib.hpx_gas_free(self.addr, lco.addr)
+        lib.hpx_gas_free(self.addr.addr, lco.addr)
 
     def free_sync(self):
-        lib.hpx_gas_free_sync(self.addr)
+        lib.hpx_gas_free_sync(self.addr.addr)
 
     def _check_index(self, index):
         if index >= self.numBlock:
             raise IndexError("Invalid index")
-    
-    def _currentdim_is_slice(sliceObj, dimLimit):
-        if sliceObj.start == None:
-            start = 0
-        else:
-            start = sliceObj.start
-        if sliceObj.stop == None:
-            stop = dimLimit
-        else:
-            stop = sliceObj.stop
-        return start, stop
-
-    def _firstdim_is_slice(self, sliceObj):
-        start, stop = _currentdim_is_slice(sliceObj, self.numBlock)
-        newAddr = self.addr + start * self.strides[0]
-        newNumBlock = stop - start
-        return newAddr, newNumBlock
 
     def __getitem__(self, key):
         if type(key) is tuple:
             if len(key) == 0:
                 return self
             if type(key[0]) is int:
-                return GlobalAddressBlock(self.addr + key[0] * self.strides[0],
-                        self.blockShape, self.dtype)[key[1:]]
+                return GlobalAddressBlock(
+                        self.addr + self.offsets[0] + key[0] * self.strides[0],
+                        self.shape[1:], self.dtype, self.strides[1:], 
+                        self.offsets[1:])[key[1:]]
             elif type(key[0]) is slice:
-                newAddr, newNumBlock = self._firstdim_is_slice(key[0])
-                newBlockShape = []
-                for i in range(1, len(key)):
-                    newBlockShape.append(key[i].stop - key[i].start)
-                newBlockShape = tuple(newBlockShape)
-                return GlobalMemory(newAddr, newNumBlock, newBlockShape, 
+                newShape = []
+                newOffsets = []
+                for i in range(len(key)):
+                    if key[i] is slice:
+                        newDimLength, newDimOffset = _current_dim_is_slice(
+                                key[i], self.shape[i], self.strides[i], 
+                                self.offsets[i])
+                        newShape.append(newDimLength)
+                        newOffsets.append(newDimOffset)
+                    elif key[i] is int:
+                        newShape.append(1)
+                        newOffsets.append(self.offsets[i] + key[i] * self.strides[i])
+                    else:
+                        raise TypeError("Invalid key type") 
+                # TODO!!
+                #newBlockShape = tuple(newBlockShape)
+                #return GlobalMemory(newAddr, newNumBlock, newBlockShape, 
                     self.dtype, self.strides)
             else:
                 raise TypeError("Invalid key type")
         elif type(key) is slice:
-            newAddr, newNumBlock = self._firstdim_is_slice(key)
-            return GlobalMemory(newAddr, newNumBlock, self.blockShape, 
-                self.dtype, self.strides)
+            newNumBlock, newFirstDimOffset = GlobalMemory._currentdim_is_slice(
+                    key, self.shape[0], self.strides[0], self.offsets[0])
+            newOffsets = list(self.offsets)
+            newOffsets[0] = newFirstDimOffset
+            newOffsets = tuple(newOffsets)
+            return GlobalMemory(self.addr, newNumBlock, self.shape[1:], 
+                self.dtype, self.strides, newOffsets)
         elif type(key) is int:
-            return GlobalAddressBlock(self.addr + key * self.strides[0],
-                    self.blockShape, self.dtype)
+            return GlobalAddressBlock(
+                    self.addr + self.offsets[0] + key * self.strides[0],
+                    self.shape[1:], self.dtype, self.strides[1:],
+                    self.offsets[1:])
         elif key == None:
             return self
         else:
