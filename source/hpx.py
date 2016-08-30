@@ -426,7 +426,6 @@ class GlobalMemory:
                 not change after the initial allocation.
             offset (tuple): Memory offset for each dimension. 
         """
-        # self.addr = GlobalAddress(addr, _calculate_block_size(blockShape, dtype))
         self.addr = addr
         self.shape = (numBlock,) + blockShape 
         self.dtype = dtype
@@ -528,25 +527,25 @@ class GlobalMemory:
                 newShape = []
                 newOffsets = []
                 for i in range(len(key)):
-                    if key[i] is slice:
-                        newDimLength, newDimOffset = _current_dim_is_slice(
+                    if type(key[i]) is slice:
+                        newDimLength, newDimOffset = _currentdim_is_slice(
                                 key[i], self.shape[i], self.strides[i], 
                                 self.offsets[i])
                         newShape.append(newDimLength)
                         newOffsets.append(newDimOffset)
-                    elif key[i] is int:
+                    elif type(key[i]) is int:
                         newShape.append(1)
                         newOffsets.append(self.offsets[i] + key[i] * self.strides[i])
                     else:
-                        raise TypeError("Invalid key type") 
-                # TODO!!
-                #newBlockShape = tuple(newBlockShape)
-                #return GlobalMemory(newAddr, newNumBlock, newBlockShape, 
-                    self.dtype, self.strides)
+                        raise TypeError("Invalid key type on dimension {0}.".format(i)) 
+                newShape = tuple(newShape)
+                newOffsets = tuple(newOffsets)
+                return GlobalMemory(self.addr, newShape[0], newShape[1:], 
+                    self.dtype, self.strides, newOffsets)
             else:
                 raise TypeError("Invalid key type")
         elif type(key) is slice:
-            newNumBlock, newFirstDimOffset = GlobalMemory._currentdim_is_slice(
+            newNumBlock, newFirstDimOffset = _currentdim_is_slice(
                     key, self.shape[0], self.strides[0], self.offsets[0])
             newOffsets = list(self.offsets)
             newOffsets[0] = newFirstDimOffset
