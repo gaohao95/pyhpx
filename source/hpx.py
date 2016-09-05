@@ -366,11 +366,13 @@ def _currentdim_is_slice(sliceObj, dimLimit, dimStride, dimOffset):
     return stop - start, dimOffset + start * dimStride
 
 class GlobalAddressBlock:
-    def __init__(self, addr, shape, dtype, strides, offset):
+    def __init__(self, addr, shape, dtype, strides, offsets):
         """Constructor of AddrBlock class
 
         Args:
-            addr (GlobalAddr): The address in global memory space
+            addr (GlobalAddr): The starting address of this block is given by 
+                self.addr + self.offsets[0]. self.addr will not change for 
+                indexing.
             size (int): Total size of this address block, must be a multiple of
                 the size of `dtype`.
             dtype (numpy.dtype): The type of each object in address block
@@ -379,7 +381,33 @@ class GlobalAddressBlock:
         self.shape = shape
         self.dtype = dtype
         self.strides = strides
-        self.offset = offset
+        self.offsets = offsets
+    
+    def __getitem__(self, key):
+        if type(key) is int or type(key) is slice:
+            keyWrap = tuple(key,)
+        elif type(key) is tuple:
+            keyWrap = key
+        else:
+            raise TypeError("Invalid key type")
+        
+        newShape = list(self.shape)
+        newOffsets = list(self.offsets)
+        for i in range(len(keyWrap)):
+            if isinstance(keyWrap[i], int):
+                newShape[i] = 1
+                newOffsets[i] = self.offsets[i] + keyWrap[i]*self.strides[i]
+            elif isinstance(keyWrap[i], slice):
+                currentLength, currentOffset = _currentdim_is_slice(
+                        keyWrap[i], self.shape[i], self.strides[i], 
+                        self.offsets[i])
+                newShape[i] = currentLength
+                newOffsets[i] = currentOffset
+            else:
+                raise TypeError("Invalid key type in dimension " + str(i))
+        
+        return GlobalAddressBlock(self.addr, newShape, self.dtype, 
+                self.strides, newOffsets)  
 
     def try_pin(self, return_local=True):
         """ Performs address translation. See `Addr.try_pin` for detail.
