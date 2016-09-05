@@ -385,7 +385,7 @@ class GlobalAddressBlock:
     
     def __getitem__(self, key):
         if type(key) is int or type(key) is slice:
-            keyWrap = tuple(key,)
+            keyWrap = (key,)
         elif type(key) is tuple:
             keyWrap = key
         else:
@@ -405,6 +405,8 @@ class GlobalAddressBlock:
                 newOffsets[i] = currentOffset
             else:
                 raise TypeError("Invalid key type in dimension " + str(i))
+        newShape = tuple(newShape)
+        newOffsets = tuple(newOffsets)
         
         return GlobalAddressBlock(self.addr, newShape, self.dtype, 
                 self.strides, newOffsets)  
@@ -552,18 +554,18 @@ class GlobalMemory:
                         self.shape[1:], self.dtype, self.strides[1:], 
                         self.offsets[1:])[key[1:]]
             elif type(key[0]) is slice:
-                newShape = []
-                newOffsets = []
+                newShape = list(self.shape)
+                newOffsets = list(self.offsets)
                 for i in range(len(key)):
                     if type(key[i]) is slice:
                         newDimLength, newDimOffset = _currentdim_is_slice(
                                 key[i], self.shape[i], self.strides[i], 
                                 self.offsets[i])
-                        newShape.append(newDimLength)
-                        newOffsets.append(newDimOffset)
+                        newShape[i] = newDimLength
+                        newOffsets[i] = newDimOffset
                     elif type(key[i]) is int:
-                        newShape.append(1)
-                        newOffsets.append(self.offsets[i] + key[i] * self.strides[i])
+                        newShape[i] = 1
+                        newOffsets[i] = self.offsets[i] + key[i] * self.strides[i]
                     else:
                         raise TypeError("Invalid key type on dimension {0}.".format(i)) 
                 newShape = tuple(newShape)
