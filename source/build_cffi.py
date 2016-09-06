@@ -136,7 +136,7 @@ typedef uint64_t hpx_addr_t;
 hpx_addr_t HPX_THERE(uint32_t i);
 hpx_addr_t HPX_HERE;
 hpx_addr_t hpx_addr_add(hpx_addr_t addr, int64_t bytes, uint32_t bsize);
-
+int64_t hpx_addr_sub(hpx_addr_t lhs, hpx_addr_t rhs, uint32_t bsize);
 /* End addr.h */
 
 /* Begin process.h */

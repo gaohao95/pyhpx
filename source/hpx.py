@@ -274,6 +274,23 @@ class GlobalAddress:
         """
         return self.__add__(bytes)
 
+    def __sub__(self, other):
+        """
+        Depending on the type of other, this method either performs global 
+        address displacement arithmetic or distance arithmetic.
+
+        If other is of type int, this performs displacement arithmetic. If 
+        other is another GlobalAddress object, the distance arithmetic will be
+        performed. In addition, self and other must be part of the same 
+        allocation.
+        """
+        if isinstance(other, int):
+            return GlobalAddress(lib.hpx_addr_add(self.addr, -other, self.bsize), self.bsize)
+        elif isinstance(other, GlobalAddress):
+            return lib.hpx_addr_sub(self.addr, other.addr, self.bsize)
+        else:
+            raise TypeError("Invalid data type")
+
     def try_pin(self, return_local=True):
         """Performs address translation.
 
@@ -405,6 +422,7 @@ class GlobalAddressBlock:
                 newOffsets[i] = currentOffset
             else:
                 raise TypeError("Invalid key type in dimension " + str(i))
+
         newShape = tuple(newShape)
         newOffsets = tuple(newOffsets)
         
