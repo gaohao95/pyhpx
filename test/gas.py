@@ -53,9 +53,13 @@ def main_handler():
     assert sub_memory[1:].shape == (3, 5)
     assert sub_memory[1:].offsets == (5*itemsize, 0)
 
+    # test try_pin and unpin
+    array = test_memory[1, :2, 1:].try_pin()
+    assert isinstance(array, np.ndarray)
+
     # test free
     test_memory[1:].free_sync()
-
+    
     hpx.exit()
 
 main_action = hpx.Action(main_handler, hpx.ATTR_NONE, b"main", [])

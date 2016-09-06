@@ -312,7 +312,7 @@ class GlobalAddress:
         """
         if return_local == True:
             local = ffi.new("void **")
-            rtv = lib.hpx_gas_try_pin(self._addr, local)
+            rtv = lib.hpx_gas_try_pin(self.addr, local)
             if rtv == False:
                 raise RuntimeError("Pinning the global memory fails")
             else:
@@ -436,17 +436,26 @@ class GlobalAddressBlock:
             A numpy array representing this address block.
         """
         if return_local == True:
-            local = ffi.new("void **")
-            rtv = lib.hpx_gas_try_pin(self.addr, local)
-            if rtv == False:
-                raise RuntimeError("Pinning the global memory fails")
-            # else:
-                # block
-                # return np.frombuffer(ffi.buffer(local[0], ), dtype=)
+            addrLocal = self.addr.try_pin(True)
+            size = self.offsets[0] + self.strides[0] * self.shape[0]
+            array = np.frombuffer(ffi.buffer(addrLocal, size), dtype=self.dtype)
+
+            bigShape = [self.offsets[0] / self.strides[0] + self.shape[0]]
+            for i in range(len(self.shape) - 1):
+                bigShape.append(self.strides[i]/self.strides[i+1])
+            bigShape = tuple(bigShape)
+            array = array.reshape(bigShape)
+
+            indexing = []
+            for i in range(len(self.shape)):
+                start = self.offsets[i] / self.strides[i]
+                stop = start + self.shape[i]
+                indexing.append(slice(start, stop, None))
+            indexing = tuple(indexing)
+            
+            return array[indexing]
         else:
-            rtv = lib.hpx_gas_try_pin(self.addr, ffi.NULL)
-            if rtv == False:
-                raise RuntimeError("Pinning the global memory fails")
+            self.addr.try_pin(False)
 
     def unpin(self):
         """ Unpin this address block.
