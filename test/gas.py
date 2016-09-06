@@ -54,8 +54,16 @@ def main_handler():
     assert sub_memory[1:].offsets == (5*itemsize, 0)
 
     # test try_pin and unpin
-    array = test_memory[1, :2, 1:].try_pin()
+    sub_block = test_memory[1, :2, 1:]
+    array = sub_block.try_pin()
     assert isinstance(array, np.ndarray)
+    array[0, 0] = 5
+    array[1, 1] = 10
+    sub_block.unpin()
+    array = test_memory[1].try_pin()
+    assert array[0, 1] == 5
+    assert array[1, 2] == 10
+    test_memory[1].unpin()
 
     # test free
     test_memory[1:].free_sync()

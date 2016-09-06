@@ -7,6 +7,7 @@ from abc import ABCMeta, abstractmethod
 from collections import deque
 
 # {{{ Define HPX status
+
 ERROR = lib.HPX_ERROR
 SUCCESS = lib.HPX_SUCCESS
 RESEND = lib.HPX_RESEND
@@ -16,9 +17,11 @@ LCO_TIMEOUT = lib.HPX_LCO_TIMEOUT
 LCO_RESET = lib.HPX_LCO_RESET
 ENOMEM = lib.HPX_ENOMEM
 USER = lib.HPX_USER
+
 # }}}
 
 # {{{ Define argument types
+
 CHAR = lib.HPX_CHAR_lvalue
 SHORT = lib.HPX_SHORT_lvalue
 USHORT = lib.HPX_USHORT_lvalue
@@ -46,9 +49,11 @@ LONGDOUBLE = lib.HPX_LONGDOUBLE_lvalue
 # COMPLEX_DOUBLE = lib.HPX_COMPLEX_DOUBLE_lvalue
 # COMPLEX_LONGDOUBLE = lib.HPX_COMPLEX_LONGDOUBLE_lvalue
 # ADDR = lib.HPX_ADDR_lvalue
+
 # }}}
 
 # {{{ Define a dictionary to map argument types to C definition
+
 _c_def_map = {
     CHAR: "char",
     SHORT: "short",
@@ -62,8 +67,8 @@ _c_def_map = {
     # POINTER: "void*",
     # ADDR: "hpx_addr_t"
 }
-# }}}
 
+# }}}
 
 # {{{ Action
 
@@ -82,7 +87,6 @@ FUNCTION = lib.HPX_FUNCTION
 
 # }}}
 
-
 # {{{ Define action attributes
 
 # Null attribute.
@@ -93,7 +97,6 @@ MARSHALLED = lib.HPX_MARSHALLED
 PINNED = lib.HPX_PINNED
 
 # }}}
-
 
 class BaseAction(metaclass=ABCMeta):
 
@@ -169,7 +172,6 @@ def init(argv=[]):
     if lib.hpx_init(c_argc, c_argv_address) != SUCCESS:
         raise RuntimeError("hpx.init failed")
 
-
 def exit():
     """Exit the HPX runtime.
 
@@ -189,7 +191,6 @@ def exit():
         system threads should be suspended.
     """
     lib.hpx_exit(lib.HPX_SUCCESS)
-
 
 def run(action, *args):
     """Start an HPX main process.
@@ -214,7 +215,6 @@ def run(action, *args):
     if lib._hpx_run(action._id, len(c_args), *c_args) != lib.HPX_SUCCESS:
         raise RuntimeError("hpx.run failed")
 
-
 def finalize():
     """Finalize/cleanup from the HPX runtime.
 
@@ -225,7 +225,6 @@ def finalize():
     """
     lib.hpx_finalize()
 
-
 def print_help():
     lib.hpx_print_help()
 
@@ -234,10 +233,8 @@ def print_help():
 def get_num_ranks():
     return lib.hpx_get_num_ranks()
 
-
 def thread_current_pid():
     return lib.hpx_thread_current_pid()
-
 
 def bcast_rsync(action_id, *args):
     c_args = generate_c_arguments(action_id, *args)
@@ -382,6 +379,8 @@ def _currentdim_is_slice(sliceObj, dimLimit, dimStride, dimOffset):
         stop = sliceObj.stop
     return stop - start, dimOffset + start * dimStride
 
+# {{{ GlobalAddressBlock
+
 class GlobalAddressBlock:
     def __init__(self, addr, shape, dtype, strides, offsets):
         """Constructor of AddrBlock class
@@ -440,15 +439,15 @@ class GlobalAddressBlock:
             size = self.offsets[0] + self.strides[0] * self.shape[0]
             array = np.frombuffer(ffi.buffer(addrLocal, size), dtype=self.dtype)
 
-            bigShape = [self.offsets[0] / self.strides[0] + self.shape[0]]
+            bigShape = [self.offsets[0] // self.strides[0] + self.shape[0]]
             for i in range(len(self.shape) - 1):
-                bigShape.append(self.strides[i]/self.strides[i+1])
+                bigShape.append(self.strides[i] // self.strides[i+1])
             bigShape = tuple(bigShape)
             array = array.reshape(bigShape)
 
             indexing = []
             for i in range(len(self.shape)):
-                start = self.offsets[i] / self.strides[i]
+                start = self.offsets[i] // self.strides[i]
                 stop = start + self.shape[i]
                 indexing.append(slice(start, stop, None))
             indexing = tuple(indexing)
@@ -462,6 +461,9 @@ class GlobalAddressBlock:
         """
         self.addr.unpin()
 
+# }}}
+
+# {{{ GlobalMemory
 
 def _calculate_block_size(blockShape, dtype):
     """ Helper function for calculating block size for GAS allocation functions.
@@ -619,16 +621,16 @@ class GlobalMemory:
         else:
             raise TypeError("Invalid key type")
 
+# }}}
+
 # get numpy type for a user-specified C type
 def get_numpy_type(type_string):
     if ffi.typeof(type_string) is ffi.typeof("uint64_t"):
         return np.uint64
     return np.dtype((np.void, ffi.sizeof(type_string)))
 
-
 def addr2buffer(addr, size):
     return ffi.buffer(addr, size)
-
 
 def lco_future_new(size):
     """Create a future.
@@ -645,7 +647,6 @@ def lco_future_new(size):
     """
     return lib.hpx_lco_future_new(size)
 
-
 def lco_wait(lco):
     """Perform a wait operation.
 
@@ -659,7 +660,6 @@ def lco_wait(lco):
     if rtv != SUCCESS:
         raise RuntimeError("LCO error")
 
-
 def lco_delete_sync(lco):
     """Delete an LCO synchronously.
 
@@ -667,7 +667,6 @@ def lco_delete_sync(lco):
         lco: The address of the LCO to delete
     """
     lib.hpx_lco_delete_sync(lco)
-
 
 def call(addr, action_id, result, *args):
     """Locally synchronous call interface.
