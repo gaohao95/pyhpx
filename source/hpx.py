@@ -629,9 +629,6 @@ def get_numpy_type(type_string):
         return np.uint64
     return np.dtype((np.void, ffi.sizeof(type_string)))
 
-def addr2buffer(addr, size):
-    return ffi.buffer(addr, size)
-
 def lco_future_new(size):
     """Create a future.
     
