@@ -124,7 +124,7 @@ static int sum_position_handler(float lhs[K][2], const float rhs[K][2], size_t b
 }
 static HPX_ACTION(HPX_FUNCTION, 0,
         sum_position_action, sum_position_handler,
-        HPX_POINTER, HPX_SIZE_T);
+        HPX_POINTER, HPX_POINTER, HPX_SIZE_T);
 
 float calc_distance_sq(const float* pt0, const float* pt1) {
     return (pt0[0]-pt1[0])*(pt0[0]-pt1[0]) + (pt0[1]-pt1[1])*(pt0[1]-pt1[1]);

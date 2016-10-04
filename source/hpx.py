@@ -43,12 +43,13 @@ UINT64 = lib.HPX_UINT64_lvalue
 SINT64 = lib.HPX_SINT64_lvalue
 FLOAT = lib.HPX_FLOAT_lvalue
 DOUBLE = lib.HPX_DOUBLE_lvalue
-# POINTER = lib.HPX_POINTER_lvalue
+POINTER = lib.HPX_POINTER_lvalue
 LONGDOUBLE = lib.HPX_LONGDOUBLE_lvalue
 # COMPLEX_FLOAT = lib.HPX_COMPLEX_FLOAT_lvalue
 # COMPLEX_DOUBLE = lib.HPX_COMPLEX_DOUBLE_lvalue
 # COMPLEX_LONGDOUBLE = lib.HPX_COMPLEX_LONGDOUBLE_lvalue
 # ADDR = lib.HPX_ADDR_lvalue
+SIZE_T = lib.HPX_SIZE_T_lvalue
 
 # }}}
 
@@ -64,7 +65,8 @@ _c_def_map = {
     SINT: "signed int",
     FLOAT: "float",
     DOUBLE: "double",
-    # POINTER: "void*",
+    POINTER: "void*",
+    SIZE_T: "size_t"
     # ADDR: "hpx_addr_t"
 }
 
@@ -118,7 +120,12 @@ class BaseAction(metaclass=ABCMeta):
         self._arguments_cdef = []
         for argument in action_arguments:
             self._arguments_cdef.append(_c_def_map[argument])
-        self._ffi_func = ffi.callback("int(" + ",".join(self._arguments_cdef) + ")")(python_func)
+        if action_type == lib.HPX_FUNCTION:
+            self._ffi_func = ffi.callback("void(" + ",".join(self._arguments_cdef) + ")")(python_func)
+        else:
+            self._ffi_func = ffi.callback("int(" + ",".join(self._arguments_cdef) + ")")(python_func)
+        if action_key is None:
+            action_key = (python_func.__module__ + ":" + python_func.__name__).encode('ascii')
         lib.hpx_register_action(action_type, action_attribute, action_key,
                                 self._id, len(action_arguments) + 1, 
                                 self._ffi_func, *action_arguments)
@@ -132,13 +139,29 @@ class BaseAction(metaclass=ABCMeta):
             c_args.append(ffi.new(c_type, args[i]))
         return c_args
 
-class Action(BaseAction):
-    
-    def __init__(self, python_func, action_attribute, action_key, action_arguments):
-        return super(Action, self).__init__(python_func, lib.HPX_DEFAULT, 
-                                                  action_attribute, action_key, 
-                                                  action_arguments)
 
+class Action(BaseAction):
+    def __init__(self, python_func, action_attribute, action_key, action_arguments):
+        return super(Action, self).__init__(python_func, lib.HPX_DEFAULT,
+                                                action_attribute, action_key,
+                                                action_arguments)
+
+def create_action(action_arguments, action_attribute=ATTR_NONE, action_key=None):
+    def decorator(python_func):
+        return Action(python_func, action_attribute, action_key, action_arguments)
+    return decorator
+
+
+class Function(BaseAction):
+    def __init__(self, python_func, action_attribute, action_key, action_arguments):
+        return super(Function, self).__init__(python_func, lib.HPX_FUNCTION,
+                                              action_attribute, action_key,
+                                              action_arguments)
+
+def create_function(action_arguments, action_attribute=ATTR_NONE, action_key=None):
+    def decorator(python_func):
+        return Function(python_func, action_attribute, action_key, action_arguments)
+    return decorator
 # }}}
 
 # {{{ Runtime
@@ -368,6 +391,8 @@ def HERE():
 
 # }}}
 
+# {{{ GlobalAddressBlock
+
 def _currentdim_is_slice(sliceObj, dimLimit, dimStride, dimOffset):
     if sliceObj.start == None:
         start = 0
@@ -378,8 +403,6 @@ def _currentdim_is_slice(sliceObj, dimLimit, dimStride, dimOffset):
     else:
         stop = sliceObj.stop
     return stop - start, dimOffset + start * dimStride
-
-# {{{ GlobalAddressBlock
 
 class GlobalAddressBlock:
     def __init__(self, addr, shape, dtype, strides, offsets):
@@ -629,41 +652,113 @@ def get_numpy_type(type_string):
         return np.uint64
     return np.dtype((np.void, ffi.sizeof(type_string)))
 
-def lco_future_new(size):
-    """Create a future.
+# {{{ LCO
+
+class LCO(metaclass=ABCMeta):
+
+    @abstractmethod
+    def __init__(self, addr, shape=None, dtype=None):
+        """
+        Args:
+            addr (hpx_addr_t): The global address of this LCO.
+            shape (int): The shape of stored numpy array of this LCO. If this 
+            LCO does not have an associated buffer, shape is set to None. 
+        """
+        self.addr = addr
+        self.shape = shape
+        self.dtype = dtype
+        if shape is not None:
+            self.size = _calculate_block_size(shape, dtype)
+
+    def delete(self, rsync):
+        """
+        Args:
+            rsync (LCO): An LCO to signal remote completion.
+        """
+        lib.hpx_lco_delete(self.addr, rsync.addr)
+
+    def delete_sync(self):
+        lib.hpx_lco_delete_sync(self.addr)
+
+    def set(self, array, lsync=True, rsync=True):
+        """
+        The argument rsync can be None, a boolean, or a LCO object.
+        If rsync is True, this call is synchronous. Otherwise, we can 
+        optionally provide a LCO object to wait for its completion. If we do 
+        not need an LCO to wait for the result, rsync can be set to None/False.
+
+        Similar for lsync.
+        """
+        pointer_to_data = ffi.cast("void*", array.__array_interface__['data'][0])
+        if rsync is None or rsync is False:
+            pass
+        elif rsync is True:
+            lib.hpx_lco_set_rsync(self.addr, self.size, pointer_to_data)
+        
+
+# {{{ And LCO
+class And(LCO):
+
+    def __init__(self, num):
+        addr = lib.hpx_lco_and_new(num)
+        super(And, self).__init__(addr, None, None)
     
-    Futures are builtin LCOs that represent values returned from asynchronous
-    computation.
-    Futures are always allocated in the global address space, because their
-    addresses are used as the targets of parcels.
+    def set(self, sync=None):
+        if sync != None:
+            lib.hpx_lco_and_set(self.addr, sync.addr)
+        else:
+            lib.hpx_lco_and_set(self.addr, lib.HPX_NULL) 
 
-    Args:
-        size: The size in bytes of the future's value (may be 0)
-    Returns:
-        The global address of the newly allocated future
-    """
-    return lib.hpx_lco_future_new(size)
+    def set_num(self, num, sync=None):
+        if sync != None:
+            lib.hpx_lco_and_set_num(self.addr, num, sync.addr)
+        else:
+            lib.hpx_lco_and_set_num(self.addr, num, lib.HPX_NULL)
 
-def lco_wait(lco):
-    """Perform a wait operation.
+# }}}
 
-    The LCO blocks the caller until an LCO set operation triggers the LCO. Each
-    LCO type has its own semantics for the state under which this occurs.
-    
-    Args:
-        lco: The LCO we're processing
-    """
-    rtv = lib.hpx_lco_wait(lco)
-    if rtv != SUCCESS:
-        raise RuntimeError("LCO error")
+class Future(LCO): 
+    def __init__(self, shape, dtype):
+        size = _calculate_block_size(shape, dtype) 
+        addr = lib.hpx_lco_future_new(size)
+        super(Future, self).__init__(addr, shape, dtype)
 
-def lco_delete_sync(lco):
-    """Delete an LCO synchronously.
+def create_id_action(dtype, shape=None):
+    def decorator(python_func):
+        @create_function([POINTER, SIZE_T])
+        def callback_action(pointer, size):
+            buf = ffi.buffer(pointer, size)
+            array = np.frombuffer(buf, dtype=dtype)
+            if shape is not None:
+                array = array.reshape(shape)
+            python_func(array)
+        return callback_action
+    return decorator
 
-    Args:
-        lco: The address of the LCO to delete
-    """
-    lib.hpx_lco_delete_sync(lco)
+def create_op_action(dtype, shape=None):
+    def decorator(python_func):
+        @create_function([POINTER, POINTER, SIZE_T])
+        def callback_action(lhs, rhs, size):
+            lhs_array = np.frombuffer(ffi.buffer(lhs, size), dtype=dtype)
+            rhs_array = np.frombuffer(ffi.buffer(rhs, size), dtype=dtype)
+            if shape is not None:
+                lhs_array = lhs_array.reshape(shape)
+                rhs_array = rhs_array.reshape(shape)
+            python_func(lhs_array, rhs_array)
+        return callback_action
+    return decorator 
+
+class Reduce(LCO):
+    def __init__(self, inputs, shape, dtype, id_action, op_action):
+        """
+        Args:
+            id_action (Function)
+            op_action (Function)
+        """
+        size = _calculate_block_size(shape, dtype)
+        addr = lib.hpx_lco_reduce_new(inputs, size, id_action._id[0], op_action._id[0])
+        super(Reduce, self).__init__(addr, shape, dtype) 
+# }}}
 
 def call(addr, action_id, result, *args):
     """Locally synchronous call interface.

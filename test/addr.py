@@ -1,8 +1,8 @@
 import hpx
 import numpy as np
-# from build._hpx import ffi, lib
 
-def main_handler():
+@hpx.create_action([])
+def main_action():
     # test addr arithmatic
     global_memory = hpx.GlobalMemory.alloc_local_at_sync(3, (4,), np.dtype(np.int), hpx.HERE())
     global_addr = global_memory.addr + 2*np.dtype(np.int).itemsize
@@ -14,8 +14,6 @@ def main_handler():
     assert (global_addr - 2*np.dtype(np.int).itemsize).addr == global_memory.addr.addr
 
     hpx.exit()
-
-main_action = hpx.Action(main_handler, hpx.ATTR_NONE, b"main", []) 
 
 hpx.init()
 hpx.run(main_action)

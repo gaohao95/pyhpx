@@ -75,6 +75,7 @@ hpx_type_t HPX_LONGDOUBLE_lvalue;
 // hpx_type_t HPX_COMPLEX_DOUBLE_lvalue;
 // hpx_type_t HPX_COMPLEX_LONGDOUBLE_lvalue;
 hpx_type_t HPX_ADDR_lvalue;
+hpx_type_t HPX_SIZE_T_lvalue;
 
 /* End types.h */
 
@@ -137,6 +138,7 @@ hpx_addr_t HPX_THERE(uint32_t i);
 hpx_addr_t HPX_HERE;
 hpx_addr_t hpx_addr_add(hpx_addr_t addr, int64_t bytes, uint32_t bsize);
 int64_t hpx_addr_sub(hpx_addr_t lhs, hpx_addr_t rhs, uint32_t bsize);
+
 /* End addr.h */
 
 /* Begin process.h */
@@ -169,9 +171,17 @@ void hpx_gas_unpin(hpx_addr_t addr);
 
 /* Begin lco.h */
 
+void hpx_lco_delete(hpx_addr_t lco, hpx_addr_t rsync);
+void hpx_lco_delete_sync(hpx_addr_t lco);
+hpx_addr_t hpx_lco_and_new(int64_t inputs);
+void hpx_lco_and_set(hpx_addr_t lco, hpx_addr_t sync);
+void hpx_lco_and_set_num(hpx_addr_t lco, int num, hpx_addr_t sync);
 hpx_addr_t hpx_lco_future_new(int size);
 hpx_status_t hpx_lco_wait(hpx_addr_t lco);
-void hpx_lco_delete_sync(hpx_addr_t lco);
+void hpx_lco_set(hpx_addr_t lco, size_t size, const void *value, hpx_addr_t lsync, hpx_addr_t rsync);
+void hpx_lco_set_lsync(hpx_addr_t lco, size_t size, const void *value, hpx_addr_t rsync);
+int hpx_lco_set_rsync(hpx_addr_t lco, size_t size, const void *value);
+hpx_addr_t hpx_lco_reduce_new(int inputs, size_t size, hpx_action_t id, hpx_action_t op);
 
 /* End lco.h */
 
@@ -216,6 +226,7 @@ hpx_type_t HPX_LONGDOUBLE_lvalue = HPX_LONGDOUBLE;
 // hpx_type_t HPX_COMPLEX_DOUBLE_lvalue = HPX_COMPLEX_DOUBLE;
 // hpx_type_t HPX_COMPLEX_LONGDOUBLE_lvalue = HPX_COMPLEX_LONGDOUBLE;
 hpx_type_t HPX_ADDR_lvalue = HPX_ADDR;
+hpx_type_t HPX_SIZE_T_lvalue = HPX_SIZE_T;
 """,
                libraries=compile_libraries,
                include_dirs=compile_include_dirs,
