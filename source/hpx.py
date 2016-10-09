@@ -654,6 +654,20 @@ def get_numpy_type(type_string):
 
 # {{{ LCO
 
+def _get_lco_addr(lco_obj):
+    """
+    Helper function to get the address of an LCO object. If the LCO object is 
+    None, return HPX_NULL.
+    """
+    if lco_obj is None:
+        addr = lib.HPX_NULL
+    else:
+        if not isinstance(lco_obj, LCO):
+            raise TypeError("expect type hpx.LCO, got '{0}'".format(type(lco_obj).__name__))
+        else:
+            addr = lco_obj.addr
+    return addr
+
 class LCO(metaclass=ABCMeta):
 
     @abstractmethod
@@ -680,15 +694,6 @@ class LCO(metaclass=ABCMeta):
     def delete_sync(self):
         lib.hpx_lco_delete_sync(self.addr)
     
-    def _get_lco_addr(self, lco_obj):
-        if lco_obj is None:
-            addr = lib.HPX_NULL
-        else:
-            if not isinstance(lco_obj, LCO):
-                raise TypeError("expect type hpx.LCO, got '{0}'".format(type(lco_obj).__name__))
-            else:
-                addr = lco_obj.addr
-        return addr
 
     def set(self, array, sync='rsync', lsync_lco=None, rsync_lco=None):
         """
@@ -706,16 +711,19 @@ class LCO(metaclass=ABCMeta):
         if sync == 'rsync':
             lib.hpx_lco_set_rsync(self.addr, self.size, pointer_to_data)
         elif sync == 'lsync':
-            rsync_addr = self._get_lco_addr(rsync_lco)
+            rsync_addr = _get_lco_addr(rsync_lco)
             lib.hpx_lco_set_lsync(self.addr, self.size, pointer_to_data, rsync_addr)
         elif sync == 'async':
-            lsync_addr = self._get_lco_addr(lsync_lco)
-            rsync_addr = self._get_lco_addr(rsync_lco)
+            lsync_addr = _get_lco_addr(lsync_lco)
+            rsync_addr = _get_lco_addr(rsync_lco)
             lib.hpx_lco_set(self.addr, self.size, pointer_to_data, lsync_addr, rsync_addr)
         elif isinstance(sync, str):
             raise ValueError("sync value not supported")
         else:
             raise TypeError("sync argument should be a string")
+
+    def wait(self):
+        lib.hpx_lco_wait(self.addr)
 
     def get(self):
         """
@@ -732,7 +740,7 @@ class And(LCO):
     def __init__(self, num):
         addr = lib.hpx_lco_and_new(num)
         super(And, self).__init__(addr, None, None)
-    
+
     def set(self, sync=None):
         if sync != None:
             lib.hpx_lco_and_set(self.addr, sync.addr)
@@ -748,8 +756,14 @@ class And(LCO):
 # }}}
 
 class Future(LCO): 
-    def __init__(self, shape, dtype):
-        size = _calculate_block_size(shape, dtype) 
+    def __init__(self, shape=None, dtype=None):
+        """
+        If shape is None, this Future LCO does not has the associated buffer.
+        """
+        if shape is not None:
+            size = _calculate_block_size(shape, dtype)
+        else:
+            size = 0
         addr = lib.hpx_lco_future_new(size)
         super(Future, self).__init__(addr, shape, dtype)
 

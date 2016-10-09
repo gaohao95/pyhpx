@@ -177,12 +177,12 @@ hpx_addr_t hpx_lco_and_new(int64_t inputs);
 void hpx_lco_and_set(hpx_addr_t lco, hpx_addr_t sync);
 void hpx_lco_and_set_num(hpx_addr_t lco, int num, hpx_addr_t sync);
 hpx_addr_t hpx_lco_future_new(int size);
-hpx_status_t hpx_lco_wait(hpx_addr_t lco);
 void hpx_lco_set(hpx_addr_t lco, size_t size, const void *value, hpx_addr_t lsync, hpx_addr_t rsync);
 void hpx_lco_set_lsync(hpx_addr_t lco, size_t size, const void *value, hpx_addr_t rsync);
 int hpx_lco_set_rsync(hpx_addr_t lco, size_t size, const void *value);
-hpx_addr_t hpx_lco_reduce_new(int inputs, size_t size, hpx_action_t id, hpx_action_t op);
+hpx_status_t hpx_lco_wait(hpx_addr_t lco);
 hpx_status_t hpx_lco_get(hpx_addr_t lco, size_t size, void *value);
+hpx_addr_t hpx_lco_reduce_new(int inputs, size_t size, hpx_action_t id, hpx_action_t op);
 
 /* End lco.h */
 

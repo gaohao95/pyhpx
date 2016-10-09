@@ -11,12 +11,26 @@ def add(lhs, rhs):
 
 @hpx.create_action([])
 def main():
+    # test lsync
     reduce_lco = hpx.Reduce(5, (3,4,5), np.dtype(np.int), set_zero, add)
     for i in range(5):
         array = np.ones((3,4,5), dtype=np.int)
         reduce_lco.set(array, sync='lsync')
     return_array = reduce_lco.get()
-    print(return_array)
+    expect_array = np.zeros((3,4,5), dtype=np.int)
+    expect_array[:] = 6
+    assert np.array_equal(return_array, expect_array)
+    # test async
+    reduce_lco = hpx.Reduce(5, (3,4,5), np.dtype(np.int), set_zero, add)
+    for i in range(5):
+        and_lco = hpx.Future()
+        array = np.ones((3,4,5), dtype=np.int)
+        reduce_lco.set(array, sync='async', lsync_lco=and_lco)
+        and_lco.wait()
+    return_array = reduce_lco.get()
+    expect_array = np.zeros((3,4,5), dtype=np.int)
+    expect_array[:] = 6 
+    assert np.array_equal(return_array, expect_array)
     hpx.exit()
 
 if __name__ == "__main__":
