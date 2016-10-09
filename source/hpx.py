@@ -679,22 +679,52 @@ class LCO(metaclass=ABCMeta):
 
     def delete_sync(self):
         lib.hpx_lco_delete_sync(self.addr)
+    
+    def _get_lco_addr(self, lco_obj):
+        if lco_obj is None:
+            addr = lib.HPX_NULL
+        else:
+            if not isinstance(lco_obj, LCO):
+                raise TypeError("expect type hpx.LCO, got '{0}'".format(type(lco_obj).__name__))
+            else:
+                addr = lco_obj.addr
+        return addr
 
-    def set(self, array, lsync=True, rsync=True):
+    def set(self, array, sync='rsync', lsync_lco=None, rsync_lco=None):
         """
-        The argument rsync can be None, a boolean, or a LCO object.
-        If rsync is True, this call is synchronous. Otherwise, we can 
-        optionally provide a LCO object to wait for its completion. If we do 
-        not need an LCO to wait for the result, rsync can be set to None/False.
-
-        Similar for lsync.
+        The argument `sync` can be 'rsync', 'lsync', or 'async'. If `sync` is 
+        'rsync', this call is fully synchronous, the argument `lsync_lco` and 
+        `rsync_lco` is ommited. If `sync` is 'lsync', this call is locally 
+        synchronous, that is the method will not return until `array` can be 
+        modified. In this case, `rsync_lco` can be optionally set to a LCO 
+        object to wait for completion. If `sync` is 'async', this call is 
+        asynchronous. In this case, `lsync_lco` can be optionally set to a LCO
+        object to wait for local completion, and `rsync_lco` can be optionally
+        set to a LCO object to wait for remote completion.
         """
         pointer_to_data = ffi.cast("void*", array.__array_interface__['data'][0])
-        if rsync is None or rsync is False:
-            pass
-        elif rsync is True:
+        if sync == 'rsync':
             lib.hpx_lco_set_rsync(self.addr, self.size, pointer_to_data)
-        
+        elif sync == 'lsync':
+            rsync_addr = self._get_lco_addr(rsync_lco)
+            lib.hpx_lco_set_lsync(self.addr, self.size, pointer_to_data, rsync_addr)
+        elif sync == 'async':
+            lsync_addr = self._get_lco_addr(lsync_lco)
+            rsync_addr = self._get_lco_addr(rsync_lco)
+            lib.hpx_lco_set(self.addr, self.size, pointer_to_data, lsync_addr, rsync_addr)
+        elif isinstance(sync, str):
+            raise ValueError("sync value not supported")
+        else:
+            raise TypeError("sync argument should be a string")
+
+    def get(self):
+        """
+        TODO: error handling
+        """
+        return_array = np.zeros(self.shape, dtype=self.dtype)
+        pointer_to_data = ffi.cast("void*", return_array.__array_interface__['data'][0])
+        lib.hpx_lco_get(self.addr, self.size, pointer_to_data)
+        return return_array
 
 # {{{ And LCO
 class And(LCO):
@@ -731,7 +761,9 @@ def create_id_action(dtype, shape=None):
             array = np.frombuffer(buf, dtype=dtype)
             if shape is not None:
                 array = array.reshape(shape)
-            python_func(array)
+            rtn = python_func(array)
+            if rtn is not None:
+                array[:] = rtn
         return callback_action
     return decorator
 
@@ -744,7 +776,9 @@ def create_op_action(dtype, shape=None):
             if shape is not None:
                 lhs_array = lhs_array.reshape(shape)
                 rhs_array = rhs_array.reshape(shape)
-            python_func(lhs_array, rhs_array)
+            rtn = python_func(lhs_array, rhs_array)
+            if rtn is not None:
+                lhs_array[:] = rtn
         return callback_action
     return decorator 
 

@@ -182,6 +182,7 @@ void hpx_lco_set(hpx_addr_t lco, size_t size, const void *value, hpx_addr_t lsyn
 void hpx_lco_set_lsync(hpx_addr_t lco, size_t size, const void *value, hpx_addr_t rsync);
 int hpx_lco_set_rsync(hpx_addr_t lco, size_t size, const void *value);
 hpx_addr_t hpx_lco_reduce_new(int inputs, size_t size, hpx_action_t id, hpx_action_t op);
+hpx_status_t hpx_lco_get(hpx_addr_t lco, size_t size, void *value);
 
 /* End lco.h */
 
