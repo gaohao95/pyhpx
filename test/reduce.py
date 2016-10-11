@@ -20,6 +20,7 @@ def main():
     expect_array = np.zeros((3,4,5), dtype=np.int)
     expect_array[:] = 6
     assert np.array_equal(return_array, expect_array)
+    
     # test async
     reduce_lco = hpx.Reduce(5, (3,4,5), np.dtype(np.int), set_zero, add)
     for i in range(5):

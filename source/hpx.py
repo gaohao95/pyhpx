@@ -139,6 +139,29 @@ class BaseAction(metaclass=ABCMeta):
             c_args.append(ffi.new(c_type, args[i]))
         return c_args
 
+    def __call__(self, addr, *args, sync='lsync', gate=None, result=None, lsync_lco=None):
+        c_args = self._generate_c_arguments(*args)
+        result_addr = _get_lco_addr(result)
+        lsync_addr = _get_lco_addr(lsync_lco)
+        if gate is None:
+            if sync == 'lsync':
+                lib._hpx_call(addr, self._id[0], lco_addr, len(c_args), *args)
+            elif sync == 'rsync':
+                # How can user set the return value ?????
+                # TODO: handle the return value
+                lib._hpx_call_sync(addr, self._id[0], ffi.NULL, 0, len(c_args), *args)
+            elif sync == 'async':
+                lib._hpx_call_async(addr, self._id[0], lsync_addr, result_addr,
+                        len(c_args), *args)
+            elif isinstance(sync, str):
+                raise ValueError("sync argument not recognizable")
+            else:
+                raise TypeError("sync argument should be of type str")
+        elif isinstance(gate, LCO):
+            pass
+        else:
+            raise TypeError("gate should be an instance of LCO")
+
 
 class Action(BaseAction):
     def __init__(self, python_func, action_attribute, action_key, action_arguments):
@@ -157,6 +180,9 @@ class Function(BaseAction):
         return super(Function, self).__init__(python_func, lib.HPX_FUNCTION,
                                               action_attribute, action_key,
                                               action_arguments)
+    
+    def __call__(self, *args, **kwargs):
+        raise RuntimeError("Funtion action is not callable")
 
 def create_function(action_arguments, action_attribute=ATTR_NONE, action_key=None):
     def decorator(python_func):

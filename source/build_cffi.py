@@ -190,6 +190,13 @@ hpx_addr_t hpx_lco_reduce_new(int inputs, size_t size, hpx_action_t id, hpx_acti
 
 int _hpx_call_sync(hpx_addr_t addr, hpx_action_t action, void *out, size_t olen, int n, ...);
 int _hpx_call(hpx_addr_t addr, hpx_action_t action, hpx_addr_t result, int n, ...);
+int _hpx_call_when(hpx_addr_t gate, hpx_addr_t addr, hpx_action_t action, hpx_addr_t result, int n, ...);
+int _hpx_call_when_with_continuation(hpx_addr_t gate, hpx_addr_t addr, hpx_action_t action, hpx_addr_t c_target, hpx_action_t c_action, int n, ...);
+int _hpx_call_when_sync(hpx_addr_t gate, hpx_addr_t addr, hpx_action_t action, void *out, size_t olen, int n, ...);
+int _hpx_call_with_continuation(hpx_addr_t addr, hpx_action_t action, hpx_addr_t c_target, hpx_action_t c_action, int n, ...);
+int _hpx_call_async(hpx_addr_t addr, hpx_action_t action, hpx_addr_t lsync, hpx_addr_t result, int n, ...);
+int _hpx_call_when_cc(hpx_addr_t gate, hpx_addr_t addr, hpx_action_t action, int n, ...);
+int _hpx_call_cc(hpx_addr_t addr, hpx_action_t action, int n, ...);
 
 /* End rpc.h */
 
