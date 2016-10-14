@@ -22,75 +22,60 @@ USER = lib.HPX_USER
 # }}}
 
 # {{{ Define argument types
-
-CHAR = lib.HPX_CHAR_lvalue
-SHORT = lib.HPX_SHORT_lvalue
-USHORT = lib.HPX_USHORT_lvalue
-SSHORT = lib.HPX_SSHORT_lvalue
-INT = lib.HPX_INT_lvalue
-UINT = lib.HPX_UINT_lvalue
-SINT = lib.HPX_SINT_lvalue
-LONG = lib.HPX_LONG_lvalue
-ULONG = lib.HPX_ULONG_lvalue
-SLONG = lib.HPX_SLONG_lvalue
-VOID = lib.HPX_VOID_lvalue
-UINT8 = lib.HPX_UINT8_lvalue
-SINT8 = lib.HPX_SINT8_lvalue
-UINT16 = lib.HPX_UINT16_lvalue
-SINT16 = lib.HPX_SINT16_lvalue
-UINT32 = lib.HPX_UINT32_lvalue
-SINT32 = lib.HPX_SINT32_lvalue
-UINT64 = lib.HPX_UINT64_lvalue
-SINT64 = lib.HPX_SINT64_lvalue
-FLOAT = lib.HPX_FLOAT_lvalue
-DOUBLE = lib.HPX_DOUBLE_lvalue
-POINTER = lib.HPX_POINTER_lvalue
-LONGDOUBLE = lib.HPX_LONGDOUBLE_lvalue
-# COMPLEX_FLOAT = lib.HPX_COMPLEX_FLOAT_lvalue
-# COMPLEX_DOUBLE = lib.HPX_COMPLEX_DOUBLE_lvalue
-# COMPLEX_LONGDOUBLE = lib.HPX_COMPLEX_LONGDOUBLE_lvalue
-ADDR = lib.HPX_ADDR_lvalue
-SIZE_T = lib.HPX_SIZE_T_lvalue
-LCO = lib.HPX_ADDR_lvalue
+class Type:
+    CHAR = lib.HPX_CHAR_lvalue
+    SHORT = lib.HPX_SHORT_lvalue
+    USHORT = lib.HPX_USHORT_lvalue
+    SSHORT = lib.HPX_SSHORT_lvalue
+    INT = lib.HPX_INT_lvalue
+    UINT = lib.HPX_UINT_lvalue
+    SINT = lib.HPX_SINT_lvalue
+    LONG = lib.HPX_LONG_lvalue
+    ULONG = lib.HPX_ULONG_lvalue
+    SLONG = lib.HPX_SLONG_lvalue
+    VOID = lib.HPX_VOID_lvalue
+    UINT8 = lib.HPX_UINT8_lvalue
+    SINT8 = lib.HPX_SINT8_lvalue
+    UINT16 = lib.HPX_UINT16_lvalue
+    SINT16 = lib.HPX_SINT16_lvalue
+    UINT32 = lib.HPX_UINT32_lvalue
+    SINT32 = lib.HPX_SINT32_lvalue
+    UINT64 = lib.HPX_UINT64_lvalue
+    SINT64 = lib.HPX_SINT64_lvalue
+    FLOAT = lib.HPX_FLOAT_lvalue
+    DOUBLE = lib.HPX_DOUBLE_lvalue
+    POINTER = lib.HPX_POINTER_lvalue
+    LONGDOUBLE = lib.HPX_LONGDOUBLE_lvalue
+    # COMPLEX_FLOAT = lib.HPX_COMPLEX_FLOAT_lvalue
+    # COMPLEX_DOUBLE = lib.HPX_COMPLEX_DOUBLE_lvalue
+    # COMPLEX_LONGDOUBLE = lib.HPX_COMPLEX_LONGDOUBLE_lvalue
+    ADDR = lib.HPX_ADDR_lvalue
+    SIZE_T = lib.HPX_SIZE_T_lvalue
+    LCO = lib.HPX_ADDR_lvalue
 
 # }}}
 
 # {{{ Define a dictionary to map argument types to C definition
 
 _c_def_map = {
-    CHAR: "char",
-    SHORT: "short",
-    USHORT: "unsigned short",
-    SSHORT: "signed short",
-    INT: "int", 
-    UINT: "unsigned int",
-    SINT: "signed int",
-    FLOAT: "float",
-    DOUBLE: "double",
-    POINTER: "void*",
-    SIZE_T: "size_t",
-    ADDR: "hpx_addr_t",
-    LCO: "hpx_addr_t"
+    Type.CHAR: "char",
+    Type.SHORT: "short",
+    Type.USHORT: "unsigned short",
+    Type.SSHORT: "signed short",
+    Type.INT: "int", 
+    Type.UINT: "unsigned int",
+    Type.SINT: "signed int",
+    Type.FLOAT: "float",
+    Type.DOUBLE: "double",
+    Type.POINTER: "void*",
+    Type.SIZE_T: "size_t",
+    Type.ADDR: "hpx_addr_t",
+    Type.LCO: "hpx_addr_t"
 }
 
 # }}}
 
 # {{{ Action
-
-# {{{ Define action types
-
-# Standard action that is scheduled and has its own stack.
-DEFAULT = lib.HPX_DEFAULT
-# Tasks are threads that do not block.
-TASK = lib.HPX_TASK
-# Interrupts are simple actions that have function call semantics.
-INTERRUPT = lib.HPX_INTERRUPT
-# Functions are simple functions that have uniform ids across localities,
-# but can not be called with the set of hpx_call operations
-# or as the action or continuation in a parcel.
-FUNCTION = lib.HPX_FUNCTION
-
-# }}}
 
 # {{{ Define action attributes
 
@@ -120,15 +105,28 @@ class BaseAction(metaclass=ABCMeta):
             action_arguments: A Python list of argument types.
         """
         self._id = ffi.new("hpx_action_t *")
+        
         self._arguments_cdef = []
         for argument in action_arguments:
-            self._arguments_cdef.append(_c_def_map[argument])
+            if isinstance(argument, tuple):
+                if argument[0] != Type.LCO:
+                    raise TypeError("The first entry in a tuple argument should be Type.LCO")
+                elif argument[1] is not None and not isinstance(argument[1], tuple):
+                    raise TypeError("The second entry in a tuple argument should be None or a tuple")
+                else:
+                    pass
+                    # TODO: implement support LCO type
+            else:
+                self._arguments_cdef.append(_c_def_map[argument])
+        
         if action_type == lib.HPX_FUNCTION:
             self._ffi_func = ffi.callback("void(" + ",".join(self._arguments_cdef) + ")")(python_func)
         else:
             self._ffi_func = ffi.callback("int(" + ",".join(self._arguments_cdef) + ")")(python_func)
+        
         if action_key is None:
             action_key = (python_func.__module__ + ":" + python_func.__name__).encode('ascii')
+        
         lib.hpx_register_action(action_type, action_attribute, action_key,
                                 self._id, len(action_arguments) + 1, 
                                 self._ffi_func, *action_arguments)
@@ -807,7 +805,7 @@ class Future(LCO):
 
 def create_id_action(dtype, shape=None):
     def decorator(python_func):
-        @create_function([POINTER, SIZE_T])
+        @create_function([Type.POINTER, Type.SIZE_T])
         def callback_action(pointer, size):
             buf = ffi.buffer(pointer, size)
             array = np.frombuffer(buf, dtype=dtype)
@@ -821,7 +819,7 @@ def create_id_action(dtype, shape=None):
 
 def create_op_action(dtype, shape=None):
     def decorator(python_func):
-        @create_function([POINTER, POINTER, SIZE_T])
+        @create_function([Type.POINTER, Type.POINTER, Type.SIZE_T])
         def callback_action(lhs, rhs, size):
             lhs_array = np.frombuffer(ffi.buffer(lhs, size), dtype=dtype)
             rhs_array = np.frombuffer(ffi.buffer(rhs, size), dtype=dtype)
