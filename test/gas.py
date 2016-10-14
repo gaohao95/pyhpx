@@ -1,7 +1,8 @@
 import hpx
 import numpy as np
 
-def main_handler():
+@hpx.create_action()
+def main():
     test_memory = hpx.GlobalMemory.alloc_local_at_sync(3, (4,5), np.dtype(np.int), hpx.HERE())
     
     # test strides and offset initialization
@@ -70,8 +71,6 @@ def main_handler():
     
     hpx.exit()
 
-main_action = hpx.Action(main_handler, hpx.ATTR_NONE, b"main", [])
-
 hpx.init()
-hpx.run(main_action)
+hpx.run(main)
 hpx.finalize()

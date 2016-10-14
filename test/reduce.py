@@ -9,7 +9,7 @@ def set_zero(array):
 def add(lhs, rhs):
     return lhs + rhs
 
-@hpx.create_action([])
+@hpx.create_action()
 def main():
     # test lsync
     reduce_lco = hpx.Reduce(5, (3,4,5), np.dtype(np.int), set_zero, add)

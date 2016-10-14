@@ -91,7 +91,8 @@ PINNED = lib.HPX_PINNED
 class BaseAction(metaclass=ABCMeta):
 
     @abstractmethod
-    def __init__(self, python_func, action_type, action_attribute, action_key, action_arguments):
+    def __init__(self, python_func, action_type, key, marshalled, pinned, 
+                 argument_types):
         """Register an HPX action.
         
         Note:
@@ -100,37 +101,50 @@ class BaseAction(metaclass=ABCMeta):
         Args:
             python_func: A Python function to be registered as a HPX action
             action_type: Type of the action.
-            action_attribute: Attributes of the action. 
-            action_key: A Python byte object to be specified as key for this action.
-            action_arguments: A Python list of argument types.
+            key: A Python byte object to be specified as key for this action.
+            argument_types: A Python list of argument types.
         """
-        self._id = ffi.new("hpx_action_t *")
+        self.id = ffi.new("hpx_action_t *")
         
-        self._arguments_cdef = []
-        for argument in action_arguments:
-            if isinstance(argument, tuple):
-                if argument[0] != Type.LCO:
-                    raise TypeError("The first entry in a tuple argument should be Type.LCO")
-                elif argument[1] is not None and not isinstance(argument[1], tuple):
-                    raise TypeError("The second entry in a tuple argument should be None or a tuple")
-                else:
-                    pass
-                    # TODO: implement support LCO type
-            else:
-                self._arguments_cdef.append(_c_def_map[argument])
-        
-        if action_type == lib.HPX_FUNCTION:
-            self._ffi_func = ffi.callback("void(" + ",".join(self._arguments_cdef) + ")")(python_func)
+        if key is None:
+            key = ((python_func.__module__ + ":" + python_func.__name__)
+                  .encode('ascii'))
+
+        self.marshalled = marshalled
+        self.pinned = pinned
+
+        if marshalled:
+            # TODO: handle both marshalled and pinned action
+            def callback_func(pointer, size):
+                args_bytes = ffi.buffer(pointer, size)[:]
+                args = pickle.loads(args_bytes)
+                return python_func(*args)
+            self._ffi_func = ffi.callback("int (void*, size_t)")(callback_func)
+            lib.hpx_register_action(action_type, lib.HPX_MARSHALLED, key, 
+                                    self.id, 3, self._ffi_func, 
+                                    Type.POINTER, Type.SIZE_T)
         else:
-            self._ffi_func = ffi.callback("int(" + ",".join(self._arguments_cdef) + ")")(python_func)
-        
-        if action_key is None:
-            action_key = (python_func.__module__ + ":" + python_func.__name__).encode('ascii')
-        
-        lib.hpx_register_action(action_type, action_attribute, action_key,
-                                self._id, len(action_arguments) + 1, 
-                                self._ffi_func, *action_arguments)
-        self._attribute = action_attribute
+            self._arguments_cdef = []
+            for argument in arguments:
+                if isinstance(argument, tuple):
+                    if argument[0] != Type.LCO:
+                        raise TypeError("The first entry in a tuple argument should be Type.LCO")
+                    elif argument[1] is not None and not isinstance(argument[1], tuple):
+                        raise TypeError("The second entry in a tuple argument should be None or a tuple")
+                    else:
+                        pass
+                        # TODO: implement support LCO type
+                else:
+                    self._arguments_cdef.append(_c_def_map[argument])
+            
+            if action_type == lib.HPX_FUNCTION:
+                self._ffi_func = ffi.callback("void(" + ",".join(self._arguments_cdef) + ")")(python_func)
+            else:
+                self._ffi_func = ffi.callback("int(" + ",".join(self._arguments_cdef) + ")")(python_func)
+            
+            lib.hpx_register_action(action_type, action_attribute, action_key,
+                                    self._id, len(action_arguments) + 1, 
+                                    self._ffi_func, *action_arguments)
 
     # Helper function for generating C arguments for this action
     def _generate_c_arguments(self, *args):
@@ -143,19 +157,24 @@ class BaseAction(metaclass=ABCMeta):
                 c_args.append(ffi.new(c_type, args[i]))
         return c_args
 
-    def __call__(self, addr, *args, sync='lsync', gate=None, result=None, lsync_lco=None):
-        c_args = self._generate_c_arguments(*args)
+    def __call__(self, target_addr, *args, sync='lsync', gate=None, result=None, lsync_lco=None):
+        if not self.marshalled:
+            c_args = self._generate_c_arguments(*args)
         result_addr = _get_lco_addr(result)
         lsync_addr = _get_lco_addr(lsync_lco)
         if gate is None:
             if sync == 'lsync':
-                lib._hpx_call(addr, self._id[0], lco_addr, len(c_args), *args)
+                if self.marshalled:
+                    pointer, size = _parse_marshalled_args(args)
+                    lib._hpx_call(target_addr.addr, self.id[0], lsync_addr, 2, pointer, size)
+                else:
+                    lib._hpx_call(target_addr.addr, self.id[0], lsync_addr, len(c_args), *args)
             elif sync == 'rsync':
                 # How can user set the return value ?????
                 # TODO: handle the return value
-                lib._hpx_call_sync(addr, self._id[0], ffi.NULL, 0, len(c_args), *args)
+                lib._hpx_call_sync(target_addr.addr, self._id[0], ffi.NULL, 0, len(c_args), *args)
             elif sync == 'async':
-                lib._hpx_call_async(addr, self._id[0], lsync_addr, result_addr,
+                lib._hpx_call_async(target_addr.addr, self._id[0], lsync_addr, result_addr,
                         len(c_args), *args)
             elif isinstance(sync, str):
                 raise ValueError("sync argument not recognizable")
@@ -168,14 +187,15 @@ class BaseAction(metaclass=ABCMeta):
 
 
 class Action(BaseAction):
-    def __init__(self, python_func, action_attribute, action_key, action_arguments):
-        return super(Action, self).__init__(python_func, lib.HPX_DEFAULT,
-                                                action_attribute, action_key,
-                                                action_arguments)
+    def __init__(self, python_func, key=None, marshalled=True, pinned=False, 
+                 argument_types=None):
+        return super(Action, self).__init__(python_func, lib.HPX_DEFAULT, key, 
+                                            marshalled, pinned, argument_types)
 
-def create_action(action_arguments, action_attribute=ATTR_NONE, action_key=None):
+def create_action(key=None, marshalled=True, pinned=False, 
+                  argument_types=None):
     def decorator(python_func):
-        return Action(python_func, action_attribute, action_key, action_arguments)
+        return Action(python_func, key, marshalled, pinned, argument_types)
     return decorator
 
 
@@ -192,6 +212,12 @@ def create_function(action_arguments, action_attribute=ATTR_NONE, action_key=Non
     def decorator(python_func):
         return Function(python_func, action_attribute, action_key, action_arguments)
     return decorator
+
+def _parse_marshalled_args(args):
+    args_bytes = pickle.dumps(args)
+    pointer = ffi.from_buffer(bytearray(args_bytes))
+    size = ffi.cast("size_t", sys.getsizeof(args_bytes))
+    return pointer, size
 
 # }}}
 
@@ -259,17 +285,21 @@ def run(action, *args, shape=None, dtype=None):
     Args:
         action (hpx.BaseAction): An action to execute.
         *args: The arguments of this action.
-
-    Raise:
-        RuntimeError
     """
-    c_args = action._generate_c_arguments(*args)
+    if action.marshalled:
+        args_pointer, size = _parse_marshalled_args(args) 
+    else:
+        c_args = action._generate_c_arguments(*args)
+
     if shape is None:
-        status = lib._hpx_run(action._id, ffi.NULL, len(c_args), *c_args)
+        if action.marshalled:
+            status = lib._hpx_run(action.id, ffi.NULL, 2, args_pointer, size) 
+        else:
+            status = lib._hpx_run(action.id, ffi.NULL, len(c_args), *c_args)
     else:
         rtv = np.zeros(shape, dtype=dtype)
         rtv_pointer = ffi.cast("void*", rtv.__array_interface__['data'][0])
-        status = lib._hpx_run(action._id, rtv_pointer, len(c_args), *c_args)
+        status = lib._hpx_run(action.id, rtv_pointer, len(c_args), *c_args)
 
     if status != lib.HPX_SUCCESS:
         raise RuntimeError("hpx.run failed")
@@ -719,6 +749,8 @@ class LCO(metaclass=ABCMeta):
         self.dtype = dtype
         if shape is not None:
             self.size = _calculate_block_size(shape, dtype)
+        else:
+            self.size = 0
 
     def delete(self, rsync):
         """
@@ -731,7 +763,7 @@ class LCO(metaclass=ABCMeta):
         lib.hpx_lco_delete_sync(self.addr)
     
 
-    def set(self, array, sync='rsync', lsync_lco=None, rsync_lco=None):
+    def set(self, array=None, sync='rsync', lsync_lco=None, rsync_lco=None):
         """
         The argument `sync` can be 'rsync', 'lsync', or 'async'. If `sync` is 
         'rsync', this call is fully synchronous, the argument `lsync_lco` and 
@@ -743,7 +775,10 @@ class LCO(metaclass=ABCMeta):
         object to wait for local completion, and `rsync_lco` can be optionally
         set to a LCO object to wait for remote completion.
         """
-        pointer_to_data = ffi.cast("void*", array.__array_interface__['data'][0])
+        if array is not None:
+            pointer_to_data = ffi.cast("void*", array.__array_interface__['data'][0])
+        else:
+            pointer_to_data = ffi.NULL
         if sync == 'rsync':
             lib.hpx_lco_set_rsync(self.addr, self.size, pointer_to_data)
         elif sync == 'lsync':

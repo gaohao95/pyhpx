@@ -1,7 +1,7 @@
 import hpx
 import numpy as np
 
-@hpx.create_action([])
+@hpx.create_action()
 def main_action():
     # test addr arithmatic
     global_memory = hpx.GlobalMemory.alloc_local_at_sync(3, (4,), np.dtype(np.int), hpx.HERE())
