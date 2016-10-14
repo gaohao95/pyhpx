@@ -111,8 +111,8 @@ int hpx_register_action(hpx_action_type_t type, uint32_t attr, const char *key,
 
 int hpx_init(int *argc, char ***argv);
 void hpx_finalize();
-void hpx_exit(int code);
-int _hpx_run(hpx_action_t *entry, int nargs, ...);
+void hpx_exit(size_t bytes, const void *out);
+int _hpx_run(hpx_action_t *entry, void *out, int nargs, ...);
 void hpx_print_help(void);
 
 /* End Runtime.h */

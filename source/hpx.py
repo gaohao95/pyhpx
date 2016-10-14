@@ -5,6 +5,7 @@ from build._hpx import ffi, lib
 import numpy as np
 from abc import ABCMeta, abstractmethod
 from collections import deque
+import pickle
 
 # {{{ Define HPX status
 
@@ -48,8 +49,9 @@ LONGDOUBLE = lib.HPX_LONGDOUBLE_lvalue
 # COMPLEX_FLOAT = lib.HPX_COMPLEX_FLOAT_lvalue
 # COMPLEX_DOUBLE = lib.HPX_COMPLEX_DOUBLE_lvalue
 # COMPLEX_LONGDOUBLE = lib.HPX_COMPLEX_LONGDOUBLE_lvalue
-# ADDR = lib.HPX_ADDR_lvalue
+ADDR = lib.HPX_ADDR_lvalue
 SIZE_T = lib.HPX_SIZE_T_lvalue
+LCO = lib.HPX_ADDR_lvalue
 
 # }}}
 
@@ -66,8 +68,9 @@ _c_def_map = {
     FLOAT: "float",
     DOUBLE: "double",
     POINTER: "void*",
-    SIZE_T: "size_t"
-    # ADDR: "hpx_addr_t"
+    SIZE_T: "size_t",
+    ADDR: "hpx_addr_t",
+    LCO: "hpx_addr_t"
 }
 
 # }}}
@@ -136,7 +139,10 @@ class BaseAction(metaclass=ABCMeta):
         c_args = []
         for i in range(len(self._arguments_cdef)):
             c_type = self._arguments_cdef[i] + ' *'
-            c_args.append(ffi.new(c_type, args[i]))
+            if self._arguments_cdef[i] == 'hpx_addr_t':
+                c_args.append(ffi.new('hpx_addr_t *', args[i].addr))
+            else:
+                c_args.append(ffi.new(c_type, args[i]))
         return c_args
 
     def __call__(self, addr, *args, sync='lsync', gate=None, result=None, lsync_lco=None):
@@ -188,6 +194,7 @@ def create_function(action_arguments, action_attribute=ATTR_NONE, action_key=Non
     def decorator(python_func):
         return Function(python_func, action_attribute, action_key, action_arguments)
     return decorator
+
 # }}}
 
 # {{{ Runtime
@@ -221,11 +228,8 @@ def init(argv=[]):
     if lib.hpx_init(c_argc, c_argv_address) != SUCCESS:
         raise RuntimeError("hpx.init failed")
 
-def exit():
+def exit(array=None):
     """Exit the HPX runtime.
-
-    This causes the hpx.run() in the main native thread to return the `code`. 
-    It is safe to call hpx.run() again after hpx.exit().
   
     This call does not imply that the HPX runtime has shut down. In particular,
     system threads may continue to run and execute HPX high-speed network
@@ -239,29 +243,37 @@ def exit():
         consumption as a result of this call. In particular, runtime-spawned
         system threads should be suspended.
     """
-    lib.hpx_exit(lib.HPX_SUCCESS)
+    if array is not None:
+        size = array.size * array.dtype.itemsize
+        lib.hpx_exit(size, array.__array_interface__['data'][0])
+    else:
+        lib.hpx_exit(0, ffi.NULL)
 
-def run(action, *args):
+def run(action, *args, shape=None, dtype=None):
     """Start an HPX main process.
     
     This collective creates an HPX "main" process, and calls the given `action`
     entry in the context of this process.
-
-    The `entry` action is invoked only on the root locality and represents a
-    diffusing computation.
     
     The process does not use termination detection and must be terminated
     through a single explicit call to hpx.exit().
 
     Args:
-        action (hpx.Action): An action to execute.
+        action (hpx.BaseAction): An action to execute.
         *args: The arguments of this action.
 
     Raise:
         RuntimeError
     """
     c_args = action._generate_c_arguments(*args)
-    if lib._hpx_run(action._id, len(c_args), *c_args) != lib.HPX_SUCCESS:
+    if shape is None:
+        status = lib._hpx_run(action._id, ffi.NULL, len(c_args), *c_args)
+    else:
+        rtv = np.zeros(shape, dtype=dtype)
+        rtv_pointer = ffi.cast("void*", rtv.__array_interface__['data'][0])
+        status = lib._hpx_run(action._id, rtv_pointer, len(c_args), *c_args)
+
+    if status != lib.HPX_SUCCESS:
         raise RuntimeError("hpx.run failed")
 
 def finalize():
@@ -834,20 +846,3 @@ class Reduce(LCO):
         super(Reduce, self).__init__(addr, shape, dtype) 
 # }}}
 
-def call(addr, action_id, result, *args):
-    """Locally synchronous call interface.
-
-    This is a locally-synchronous, globally-asynchronous variant of
-    the remote-procedure call interface. If @p result is not hpx.NULL,
-    hpx_call puts the the resulting value in @p result at some point
-    in the future.
-    
-    Args:
-        addr (GlobalAddr): The address that defines where the action is executed.
-        action: The action to perform.
-        result: An address of an LCO to trigger with the result.
-    """
-    c_args = generate_c_arguments(action_id, *args)
-    rtv = lib._hpx_call(addr._addr, action_id[0], result, len(c_args), *c_args)
-    if rtv != SUCCESS:
-        raise RuntimeError("A problem occurs during the hpx_call invocation")
