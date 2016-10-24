@@ -120,16 +120,20 @@ class BaseAction(metaclass=ABCMeta):
                 args = pickle.loads(args_bytes)
                 if pinned:
                     argslist = list(args)
-                    argslist[0] = argslist[0].try_pin()
+                    target = argslist[0]
+                    argslist[0] = target.try_pin()
                     args = tuple(argslist)
-                return python_func(*args)
+                rtv = python_func(*args)
+                if pinned:
+                    target = target.unpin()
+                return rtv
             self._ffi_func = ffi.callback("int (void*, size_t)")(callback_func)
             lib.hpx_register_action(action_type, lib.HPX_MARSHALLED, key, 
                                     self.id, 3, self._ffi_func, 
                                     Type.POINTER, Type.SIZE_T)
         else:
             self._arguments_cdef = []
-            for argument in arguments:
+            for argument in argument_types:
                 if isinstance(argument, tuple):
                     if argument[0] != Type.LCO:
                         raise TypeError("The first entry in a tuple argument should be Type.LCO")
@@ -146,9 +150,9 @@ class BaseAction(metaclass=ABCMeta):
             else:
                 self._ffi_func = ffi.callback("int(" + ",".join(self._arguments_cdef) + ")")(python_func)
             
-            lib.hpx_register_action(action_type, action_attribute, action_key,
-                                    self._id, len(action_arguments) + 1, 
-                                    self._ffi_func, *action_arguments)
+            lib.hpx_register_action(action_type, lib.HPX_ATTR_NONE, key,
+                                    self.id, len(argument_types) + 1, 
+                                    self._ffi_func, *argument_types)
 
     # Helper function for generating C arguments for this action
     def _generate_c_arguments(self, *args):
@@ -268,17 +272,19 @@ def create_action(key=None, marshalled=True, pinned=False,
 
 
 class Function(BaseAction):
-    def __init__(self, python_func, action_attribute, action_key, action_arguments):
-        return super(Function, self).__init__(python_func, lib.HPX_FUNCTION,
-                                              action_attribute, action_key,
-                                              action_arguments)
+    def __init__(self, python_func, key=None, marshalled=True, pinned=False,
+                 argument_types=None):
+        return super(Function, self).__init__(python_func, lib.HPX_FUNCTION, 
+                                              key, marshalled, pinned,
+                                              argument_types) 
     
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *args):
         raise RuntimeError("Funtion action is not callable")
 
-def create_function(action_arguments, action_attribute=ATTR_NONE, action_key=None):
+def create_function(key=None, marshalled=True, pinned=False,
+                    argument_types=None):
     def decorator(python_func):
-        return Function(python_func, action_attribute, action_key, action_arguments)
+        return Function(python_func, key, marshalled, pinned, argument_types)
     return decorator
 
 def _parse_marshalled_args(args):
@@ -909,7 +915,8 @@ class Future(LCO):
 
 def create_id_action(dtype, shape=None):
     def decorator(python_func):
-        @create_function([Type.POINTER, Type.SIZE_T])
+        @create_function(marshalled=False,
+                         argument_types=[Type.POINTER, Type.SIZE_T])
         def callback_action(pointer, size):
             buf = ffi.buffer(pointer, size)
             array = np.frombuffer(buf, dtype=dtype)
