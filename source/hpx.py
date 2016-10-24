@@ -106,6 +106,7 @@ class BaseAction(metaclass=ABCMeta):
         """
         self.id = ffi.new("hpx_action_t *")
         
+        # generate default key if not specified
         if key is None:
             key = ((python_func.__module__ + ":" + python_func.__name__)
                   .encode('ascii'))
@@ -114,10 +115,13 @@ class BaseAction(metaclass=ABCMeta):
         self.pinned = pinned
 
         if marshalled:
-            # TODO: handle both marshalled and pinned action
             def callback_func(pointer, size):
                 args_bytes = ffi.buffer(pointer, size)[:]
                 args = pickle.loads(args_bytes)
+                if pinned:
+                    argslist = list(args)
+                    argslist[0] = argslist[0].try_pin()
+                    args = tuple(argslist)
                 return python_func(*args)
             self._ffi_func = ffi.callback("int (void*, size_t)")(callback_func)
             lib.hpx_register_action(action_type, lib.HPX_MARSHALLED, key, 
@@ -157,24 +161,88 @@ class BaseAction(metaclass=ABCMeta):
                 c_args.append(ffi.new(c_type, args[i]))
         return c_args
 
-    def __call__(self, target_addr, *args, sync='lsync', gate=None, result=None, lsync_lco=None):
-        if not self.marshalled:
+    def __call__(self, target_addr, *args, sync='lsync', gate=None, 
+                 lsync_lco=None, rsync_lco=None):
+        """
+        if this action is pinned, target_addr must be a GlobalAddressBlock, 
+        otherwise can be either GlobalAddressBlock or GlobalAddress.
+
+        if target_addr is hpx.NULL(), then the action is launched on every
+        locality of this process.
+        """
+        if self.marshalled:
+            pointer, size = _parse_marshalled_args(args)
+        else:
             c_args = self._generate_c_arguments(*args)
-        result_addr = _get_lco_addr(result)
+
         lsync_addr = _get_lco_addr(lsync_lco)
+        rsync_addr = _get_lco_addr(rsync_lco)
+
+        if (isinstance(target_addr, GlobalAddress) and 
+            target_addr.addr == lib.HPX_NULL):
+            if self.pinned:
+                raise RuntimeError("Pinned action is not supported for"
+                        "broadcast.")
+            if sync == 'lsync':
+                if self.marshalled:
+                    lib._hpx_process_broadcast_lsync(
+                            lib.hpx_thread_current_pid(), self.id[0], 
+                            rsync_addr, 2, pointer, size)
+                else:
+                    lib._hpx_process_broadcast_lsync(
+                            lib.hpx_thread_current_pid(), self.id[0],
+                            rsync_addr, len(c_args), *c_args)
+            elif sync == 'rsync':
+                if self.marshalled:
+                    lib._hpx_process_broadcast_rsync(
+                            lib.hpx_thread_current_pid(), self.id[0],
+                            2, pointer, size)
+                else:
+                    lib._hpx_process_broadcast_rsync(
+                            lib.hpx_thread_current_pid(), self.id[0],
+                            len(c_args), *c_args)
+            elif sync == 'async':
+                if self.marshalled:
+                    lib._hpx_process_broadcast(lib.hpx_thread_current_pid(),
+                        self.id[0], lsync_addr, rsync_addr, 2, pointer, size)
+                else:
+                    lib._hpx_process_broadcast(lib.hpx_thread_current_pid(),
+                        self.id[0], lsync_addr, rsync_addr,
+                        len(c_args), *args)
+            elif isinstance(sync, str):
+                raise NameError("unrecognized string for sync argument")
+            else:
+                raise TypeError("sync argument should be of type str")
+            return
+
+        # get the address of target_addr of type int
+        if isinstance(target_addr, GlobalAddressBlock):
+            target_addr_int = target_addr.addr.addr
+        elif isinstance(target_addr, GlobalAddress):
+            target_addr_int = target_addr.addr
+        else:
+            raise TypeError("target_addr must be either GlobalAddressBlock or"
+                            "GlobalAddress")
+
         if gate is None:
             if sync == 'lsync':
                 if self.marshalled:
+                    if self.pinned:
+                        if not isinstance(target_addr, GlobalAddressBlock):
+                            raise TypeError("target_addr is not GlobalAddressBlock object") 
+                        expandargs = list(args)
+                        expandargs.insert(0, target_addr)
+                        args = tuple(expandargs)
                     pointer, size = _parse_marshalled_args(args)
-                    lib._hpx_call(target_addr.addr, self.id[0], lsync_addr, 2, pointer, size)
+                    lib._hpx_call(target_addr_int, self.id[0], rsync_addr, 2, pointer, size)
                 else:
-                    lib._hpx_call(target_addr.addr, self.id[0], lsync_addr, len(c_args), *args)
+                    lib._hpx_call(target_addr_int, self.id[0], rsync_addr, len(c_args), *args)
             elif sync == 'rsync':
                 # How can user set the return value ?????
                 # TODO: handle the return value
                 lib._hpx_call_sync(target_addr.addr, self._id[0], ffi.NULL, 0, len(c_args), *args)
             elif sync == 'async':
-                lib._hpx_call_async(target_addr.addr, self._id[0], lsync_addr, result_addr,
+                lib._hpx_call_async(target_addr.addr, self._id[0], lsync_addr, rsync_addr,
                         len(c_args), *args)
             elif isinstance(sync, str):
                 raise ValueError("sync argument not recognizable")
@@ -527,7 +595,8 @@ class GlobalAddressBlock:
             addrLocal = self.addr.try_pin(True)
             size = self.offsets[0] + self.strides[0] * self.shape[0]
             array = np.frombuffer(ffi.buffer(addrLocal, size), dtype=self.dtype)
-
+            
+            # reshape the array
             bigShape = [self.offsets[0] // self.strides[0] + self.shape[0]]
             for i in range(len(self.shape) - 1):
                 bigShape.append(self.strides[i] // self.strides[i+1])

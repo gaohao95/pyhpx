@@ -144,6 +144,8 @@ int64_t hpx_addr_sub(hpx_addr_t lhs, hpx_addr_t rhs, uint32_t bsize);
 /* Begin process.h */
 
 typedef hpx_addr_t hpx_pid_t;
+int _hpx_process_broadcast(hpx_pid_t pid, hpx_action_t action, hpx_addr_t lsync, hpx_addr_t rsync, int nargs, ...);
+int _hpx_process_broadcast_lsync(hpx_pid_t pid, hpx_action_t action, hpx_addr_t rsync, int nargs, ...);
 int _hpx_process_broadcast_rsync(hpx_pid_t pid, hpx_action_t action, int nargs, ...);
 
 /* End process.h */

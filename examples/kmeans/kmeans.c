@@ -70,7 +70,7 @@ static int main_handler(void) {
         num_iteration ++;
     }
 
-    hpx_exit(HPX_SUCCESS);
+    hpx_exit(0, NULL);
 }
 static HPX_ACTION(HPX_DEFAULT, 0, main_action, main_handler);
 
@@ -181,7 +181,7 @@ int main(int argc, char* argv[argc]) {
         sleep(5);
     if(hpx_init(&argc, &argv) != 0)
         return -1;
-    int success = hpx_run(&main_action);
+    int success = hpx_run(&main_action, NULL, 0);
     hpx_finalize();
     return success;
 }
