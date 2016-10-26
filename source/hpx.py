@@ -930,7 +930,8 @@ def create_id_action(dtype, shape=None):
 
 def create_op_action(dtype, shape=None):
     def decorator(python_func):
-        @create_function([Type.POINTER, Type.POINTER, Type.SIZE_T])
+        @create_function(marshalled=False, 
+                argument_types=[Type.POINTER, Type.POINTER, Type.SIZE_T])
         def callback_action(lhs, rhs, size):
             lhs_array = np.frombuffer(ffi.buffer(lhs, size), dtype=dtype)
             rhs_array = np.frombuffer(ffi.buffer(rhs, size), dtype=dtype)
@@ -951,7 +952,7 @@ class Reduce(LCO):
             op_action (Function)
         """
         size = _calculate_block_size(shape, dtype)
-        addr = lib.hpx_lco_reduce_new(inputs, size, id_action._id[0], op_action._id[0])
+        addr = lib.hpx_lco_reduce_new(inputs, size, id_action.id[0], op_action.id[0])
         super(Reduce, self).__init__(addr, shape, dtype) 
 # }}}
 
