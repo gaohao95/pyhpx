@@ -288,8 +288,8 @@ def create_function(key=None, marshalled=True, pinned=False,
     return decorator
 
 def _parse_marshalled_args(args):
-    args_bytes = pickle.dumps(args)
-    pointer = ffi.from_buffer(bytearray(args_bytes))
+    args_bytes = bytearray(pickle.dumps(args))
+    pointer = ffi.from_buffer(args_bytes)
     size = ffi.cast("size_t", sys.getsizeof(args_bytes))
     return pointer, size
 

@@ -62,6 +62,7 @@ def main():
     
     data_this_block = data[0].try_pin()
     centers = data_this_block[:K]
+    data[0].unpin()
     iterations = 0
     while iterations < MAX_ITERATION:
         count_lco = hpx.Reduce(NUM_NODE, (K,), np.dtype(np.int), 
