@@ -126,7 +126,10 @@ void hpx_parcel_set_action(hpx_parcel_t *p, hpx_action_t action);
 
 /* Begin topology.h */
 
+int hpx_get_my_rank(void);
 int hpx_get_num_ranks(void);
+int hpx_get_num_threads(void);
+int hpx_get_my_thread_id(void);
 
 /* End topology.h */
 

@@ -6,6 +6,7 @@ import numpy as np
 from abc import ABCMeta, abstractmethod
 from collections import deque
 import pickle
+import logging
 
 # {{{ Define HPX status
 
@@ -110,6 +111,7 @@ class BaseAction(metaclass=ABCMeta):
         if key is None:
             key = ((python_func.__module__ + ":" + python_func.__name__)
                   .encode('ascii'))
+        self.key = key
 
         self.marshalled = marshalled
         self.pinned = pinned
@@ -174,6 +176,9 @@ class BaseAction(metaclass=ABCMeta):
         if target_addr is hpx.NULL(), then the action is launched on every
         locality of this process.
         """
+        logging.info("rank {0} on thread {1} calling action {2}".format(
+                     get_my_rank(), get_my_thread_id(), self.key))
+
         if self.marshalled:
             pointer, size = _parse_marshalled_args(args)
         else:
@@ -181,7 +186,8 @@ class BaseAction(metaclass=ABCMeta):
 
         lsync_addr = _get_lco_addr(lsync_lco)
         rsync_addr = _get_lco_addr(rsync_lco)
-
+        
+        # broadcast action 
         if (isinstance(target_addr, GlobalAddress) and 
             target_addr.addr == lib.HPX_NULL):
             if self.pinned:
@@ -311,7 +317,6 @@ def init(argv=[]):
         RuntimeError: If the initialization fails.
     """
     # TODO: remove hpx specifig flags in argv
-
     if len(argv) == 0:
         c_argc = ffi.NULL
         c_argv_address = ffi.NULL
@@ -392,9 +397,6 @@ def print_help():
     lib.hpx_print_help()
 
 # }}} 
-
-def get_num_ranks():
-    return lib.hpx_get_num_ranks()
 
 def thread_current_pid():
     return lib.hpx_thread_current_pid()
@@ -918,6 +920,9 @@ def create_id_action(dtype, shape=None):
         @create_function(marshalled=False,
                          argument_types=[Type.POINTER, Type.SIZE_T])
         def callback_action(pointer, size):
+            logging.info("rank {0} thread {1} start id callback {2}".format(
+                         get_my_rank(), get_my_thread_id(),
+                         python_func.__module__ + ':' + python_func.__name__))
             buf = ffi.buffer(pointer, size)
             array = np.frombuffer(buf, dtype=dtype)
             if shape is not None:
@@ -925,6 +930,9 @@ def create_id_action(dtype, shape=None):
             rtn = python_func(array)
             if rtn is not None:
                 array[:] = rtn
+            logging.info("rank {0} thread {1} finish id callback {2}".format(
+                         get_my_rank(), get_my_thread_id(),
+                         python_func.__module__ + ':' + python_func.__name__))
         return callback_action
     return decorator
 
@@ -933,6 +941,9 @@ def create_op_action(dtype, shape=None):
         @create_function(marshalled=False, 
                 argument_types=[Type.POINTER, Type.POINTER, Type.SIZE_T])
         def callback_action(lhs, rhs, size):
+            logging.info("rank {0} thread {1} start op callback {2}".format(
+                         get_my_rank(), get_my_thread_id(),
+                         python_func.__module__ + ':' + python_func.__name__))
             lhs_array = np.frombuffer(ffi.buffer(lhs, size), dtype=dtype)
             rhs_array = np.frombuffer(ffi.buffer(rhs, size), dtype=dtype)
             if shape is not None:
@@ -941,6 +952,9 @@ def create_op_action(dtype, shape=None):
             rtn = python_func(lhs_array, rhs_array)
             if rtn is not None:
                 lhs_array[:] = rtn
+            logging.info("rank {0} thread {1} finish op callback {2}".format(
+                         get_my_rank(), get_my_thread_id(),
+                         python_func.__module__ + ':' + python_func.__name__))
         return callback_action
     return decorator 
 
@@ -956,3 +970,27 @@ class Reduce(LCO):
         super(Reduce, self).__init__(addr, shape, dtype) 
 # }}}
 
+# {{{ Logging
+
+def set_loglevel(loglevel: str):
+    numeric_level = getattr(logging, loglevel.upper(), None)
+    if not isinstance(numeric_level, int):
+        raise ValueError('Invalid log level: %s' % loglevel)
+    logging.basicConfig(level=numeric_level)
+# }}}
+
+# {{{ Topology
+
+def get_my_rank():
+    return lib.hpx_get_my_rank();
+
+def get_num_ranks():
+    return lib.hpx_get_num_ranks();
+
+def get_num_threads():
+    return lib.hpx_get_num_threads();
+
+def get_my_thread_id():
+    return lib.hpx_get_my_thread_id();
+
+# }}}

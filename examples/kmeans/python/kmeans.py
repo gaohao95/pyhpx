@@ -2,6 +2,7 @@ import hpx
 import math
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
+import logging
 
 DATA_SIZE = 10000000
 DATA_RANGE = 100000.0
@@ -33,7 +34,9 @@ def sum_position(lhs_array, rhs_array):
     lhs_array[:] = lhs_array + rhs_array
 
 @hpx.create_action(pinned=True)
-def calculate_centers(data, size, centers, count_lco, position_lco):
+def calculate_centers(data, size, centers, count_lco, position_lco, and_lco):
+    logging.info("rank {0} thread {1} begin execute calculate_centers".format(
+                 hpx.get_my_rank(), hpx.get_my_thread_id()))
     # nbrs = NearestNeighbors(n_neighbors=1, algorithm='auto').fit(centers)
     # nearest_centers = nbrs.kneighbors(data, return_distance=False)[:, 0]
     # count_lco.set(array=np.bincount(nearest_centers, minlength=K),
@@ -42,6 +45,10 @@ def calculate_centers(data, size, centers, count_lco, position_lco):
     # for i in range(K):
     #    positions[i, :] = np.sum(data[nearest_centers == i], axis=0)
     # position_lco.set(array=positions, sync='lsync')
+    and_lco.set()
+    
+    logging.info("rank {0} thread {1} finish execute calculate_centers".format(
+                 hpx.get_my_rank(), hpx.get_my_thread_id()))
     return hpx.SUCCESS
 
 def node_size(no):
@@ -69,19 +76,23 @@ def main():
                                initialize_count, sum_count)  
         position_lco = hpx.Reduce(NUM_NODE, (K, DIM), np.dtype(np.float),
                                   initialize_position, sum_position)
+        and_lco = hpx.And(NUM_NODE)
         for i in range(NUM_NODE):
             calculate_centers(data[i], node_size(i), centers, 
-                              count_lco, position_lco)
+                              count_lco, position_lco, and_lco)
         # counts = count_lco.get()
         # positions = position_lco.get()
         #TODO
+        and_lco.wait()
         count_lco.delete_sync()
         position_lco.delete_sync()
+        and_lco.delete_sync()
         iterations = iterations + 1
 
     hpx.exit()
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.DEBUG)
     hpx.init()
     hpx.run(main)
     hpx.finalize()
