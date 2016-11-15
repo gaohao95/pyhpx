@@ -114,6 +114,7 @@ void hpx_finalize();
 void hpx_exit(size_t bytes, const void *out);
 int _hpx_run(hpx_action_t *entry, void *out, int nargs, ...);
 void hpx_print_help(void);
+int hpx_custom_init(int *argc, char ***argv);
 
 /* End Runtime.h */
 
@@ -207,9 +208,12 @@ int _hpx_call_cc(hpx_addr_t addr, hpx_action_t action, int n, ...);
 
 """)
 
+compile_include_dirs.append('contrib')
+
 ffi.set_source("build._hpx",
 """
 #include <hpx/hpx.h>
+#include "uthash/uthash.h"
 hpx_type_t HPX_CHAR_lvalue = HPX_CHAR;
 hpx_type_t HPX_UCHAR_lvalue = HPX_UCHAR;
 hpx_type_t HPX_SCHAR_lvalue = HPX_SCHAR;
@@ -240,6 +244,31 @@ hpx_type_t HPX_LONGDOUBLE_lvalue = HPX_LONGDOUBLE;
 // hpx_type_t HPX_COMPLEX_LONGDOUBLE_lvalue = HPX_COMPLEX_LONGDOUBLE;
 hpx_type_t HPX_ADDR_lvalue = HPX_ADDR;
 hpx_type_t HPX_SIZE_T_lvalue = HPX_SIZE_T;
+
+static struct lwt_state {
+    // thread state for each lightweight thread
+    int tls_id;
+    PyFrameObject* frame;
+    UT_hash_handle hh;
+}
+
+static void before_transfer_callback(void)
+{
+
+}
+
+static void after_transfer_callback(void)
+{
+
+}
+
+int hpx_custom_init(int *argc, char ***argv)
+{
+    int rtv = hpx_init(argc, argv);
+    register_before_transfer_callback((CallbackType) before_transfer_callback);
+    register_after_transfer_callback((CallbackType) after_transfer_callback);
+    return rtv;
+}
 """,
                libraries=compile_libraries,
                include_dirs=compile_include_dirs,

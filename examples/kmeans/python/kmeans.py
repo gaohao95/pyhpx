@@ -35,7 +35,7 @@ def sum_position(lhs_array, rhs_array):
 
 @hpx.create_action(pinned=True)
 def calculate_centers(data, size, centers, count_lco, position_lco, and_lco):
-    logging.info("rank {0} thread {1} begin execute calculate_centers".format(
+    logging.debug("rank {0} thread {1} begin execute calculate_centers".format(
                  hpx.get_my_rank(), hpx.get_my_thread_id()))
     # nbrs = NearestNeighbors(n_neighbors=1, algorithm='auto').fit(centers)
     # nearest_centers = nbrs.kneighbors(data, return_distance=False)[:, 0]
@@ -47,7 +47,7 @@ def calculate_centers(data, size, centers, count_lco, position_lco, and_lco):
     # position_lco.set(array=positions, sync='lsync')
     and_lco.set()
     
-    logging.info("rank {0} thread {1} finish execute calculate_centers".format(
+    logging.debug("rank {0} thread {1} finish execute calculate_centers".format(
                  hpx.get_my_rank(), hpx.get_my_thread_id()))
     return hpx.SUCCESS
 
@@ -92,7 +92,7 @@ def main():
     hpx.exit()
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.DEBUG)
+    hpx.set_loglevel("DEBUG")
     hpx.init()
     hpx.run(main)
     hpx.finalize()

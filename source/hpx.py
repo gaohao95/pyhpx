@@ -176,7 +176,7 @@ class BaseAction(metaclass=ABCMeta):
         if target_addr is hpx.NULL(), then the action is launched on every
         locality of this process.
         """
-        logging.info("rank {0} on thread {1} calling action {2}".format(
+        logging.debug("rank {0} on thread {1} calling action {2}".format(
                      get_my_rank(), get_my_thread_id(), self.key))
 
         if self.marshalled:
@@ -328,7 +328,7 @@ def init(argv=[]):
             c_argv_obj.append(ffi.new("char[]", argv[i].encode('ascii')))
             c_argv[i] = c_argv_obj[i]
         c_argv_address = ffi.new("char ***", c_argv)
-    if lib.hpx_init(c_argc, c_argv_address) != SUCCESS:
+    if lib.hpx_custom_init(c_argc, c_argv_address) != SUCCESS:
         raise RuntimeError("hpx.init failed")
 
 def exit(array=None):
@@ -920,7 +920,7 @@ def create_id_action(dtype, shape=None):
         @create_function(marshalled=False,
                          argument_types=[Type.POINTER, Type.SIZE_T])
         def callback_action(pointer, size):
-            logging.info("rank {0} thread {1} start id callback {2}".format(
+            logging.debug("rank {0} thread {1} start id callback {2}".format(
                          get_my_rank(), get_my_thread_id(),
                          python_func.__module__ + ':' + python_func.__name__))
             buf = ffi.buffer(pointer, size)
@@ -930,7 +930,7 @@ def create_id_action(dtype, shape=None):
             rtn = python_func(array)
             if rtn is not None:
                 array[:] = rtn
-            logging.info("rank {0} thread {1} finish id callback {2}".format(
+            logging.debug("rank {0} thread {1} finish id callback {2}".format(
                          get_my_rank(), get_my_thread_id(),
                          python_func.__module__ + ':' + python_func.__name__))
         return callback_action
@@ -941,7 +941,7 @@ def create_op_action(dtype, shape=None):
         @create_function(marshalled=False, 
                 argument_types=[Type.POINTER, Type.POINTER, Type.SIZE_T])
         def callback_action(lhs, rhs, size):
-            logging.info("rank {0} thread {1} start op callback {2}".format(
+            logging.debug("rank {0} thread {1} start op callback {2}".format(
                          get_my_rank(), get_my_thread_id(),
                          python_func.__module__ + ':' + python_func.__name__))
             lhs_array = np.frombuffer(ffi.buffer(lhs, size), dtype=dtype)
@@ -952,7 +952,7 @@ def create_op_action(dtype, shape=None):
             rtn = python_func(lhs_array, rhs_array)
             if rtn is not None:
                 lhs_array[:] = rtn
-            logging.info("rank {0} thread {1} finish op callback {2}".format(
+            logging.debug("rank {0} thread {1} finish op callback {2}".format(
                          get_my_rank(), get_my_thread_id(),
                          python_func.__module__ + ':' + python_func.__name__))
         return callback_action
@@ -977,6 +977,7 @@ def set_loglevel(loglevel: str):
     if not isinstance(numeric_level, int):
         raise ValueError('Invalid log level: %s' % loglevel)
     logging.basicConfig(level=numeric_level)
+
 # }}}
 
 # {{{ Topology
