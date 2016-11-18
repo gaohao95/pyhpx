@@ -110,11 +110,12 @@ int hpx_register_action(hpx_action_type_t type, uint32_t attr, const char *key,
 /* Begin Runtime.h */
 
 int hpx_init(int *argc, char ***argv);
-void hpx_finalize();
+void hpx_finalize(void);
 void hpx_exit(size_t bytes, const void *out);
 int _hpx_run(hpx_action_t *entry, void *out, int nargs, ...);
 void hpx_print_help(void);
 int hpx_custom_init(int *argc, char ***argv);
+void hpx_custom_finalize(void);
 
 /* End Runtime.h */
 
@@ -245,21 +246,57 @@ hpx_type_t HPX_LONGDOUBLE_lvalue = HPX_LONGDOUBLE;
 hpx_type_t HPX_ADDR_lvalue = HPX_ADDR;
 hpx_type_t HPX_SIZE_T_lvalue = HPX_SIZE_T;
 
-static struct lwt_state {
-    // thread state for each lightweight thread
+typedef struct thread_state_map thread_state_map;
+struct thread_state_map {
     int tls_id;
-    PyFrameObject* frame;
+    PyThreadState* ts;
     UT_hash_handle hh;
-}
+};
+thread_state_map* dict = NULL;
 
 static void before_transfer_callback(void)
 {
-
+    PyGILState_STATE gil_state = PyGILState_Ensure();
+    
+    // Get thread state and tls_id 
+    PyThreadState* current_thread_state = PyThreadState_Get();
+    int tls_id = hpx_thread_get_tls_id();
+    
+    // Construct map
+    thread_state_map* current_map = malloc(sizeof(thread_state_map));
+    current_map->tls_id = tls_id;
+    current_map->ts = current_thread_state;
+    
+    // Add map to dictionary
+    HASH_ADD_INT(dict, tls_id, current_map);
+    
+    PyGILState_Release(gil_state);
 }
 
 static void after_transfer_callback(void)
 {
+    PyGILState_STATE gil_state = PyGILState_Ensure();
+    PyThreadState* current_thread_state = PyThreadState_Get(); 
 
+    // Search for dict to check whether this lightweight thread has executed 
+    // before
+    int tls_id = hpx_thread_get_tls_id();
+    thread_state_map* target_map;
+    HASH_FIND_INT(dict, &tls_id, target_map);
+
+    if(target_map == NULL) {
+        // This is a new lightweight thread
+        PyThreadState_Clear(current_thread_state);
+    } else {
+        // Restore the old lightweight thread
+        PyThreadState* target_thread_state = target_map -> ts;
+        current_thread_state->frame = target_thread_state->frame;
+        current_thread_state->recursion_depth = target_thread_state->recursion_depth;
+        current_thread_state->overflowed = target_thread_state->overflowed;
+        current_thread_state->recursion_critical = target_thread_state->recursion_critical;
+    }
+
+    PyGILState_Release(gil_state); 
 }
 
 int hpx_custom_init(int *argc, char ***argv)
@@ -269,6 +306,12 @@ int hpx_custom_init(int *argc, char ***argv)
     register_after_transfer_callback((CallbackType) after_transfer_callback);
     return rtv;
 }
+
+void hpx_custom_finalize(void)
+{
+    hpx_finalize();
+}
+
 """,
                libraries=compile_libraries,
                include_dirs=compile_include_dirs,

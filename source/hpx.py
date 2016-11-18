@@ -391,7 +391,7 @@ def finalize():
     must never be called after hpx.finalize().
 
     """
-    lib.hpx_finalize()
+    lib.hpx_custom_finalize()
 
 def print_help():
     lib.hpx_print_help()
