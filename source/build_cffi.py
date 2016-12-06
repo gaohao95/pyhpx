@@ -262,7 +262,6 @@ static void begin_callback(void)
     PyGILState_STATE gil_state = PyGILState_Ensure();
     PyThreadState* current_thread_state = PyThreadState_Get();
     ++current_thread_state->gilstate_counter; 
-    // fprintf(stderr, \"begin counter %d\\n\", current_thread_state->gilstate_counter);
     PyGILState_Release(gil_state);
 }
 
@@ -282,7 +281,7 @@ static void before_transfer_callback(void)
     // Add map to dictionary
     HASH_ADD_INT(dict, tls_id, current_map);
 
-    // fprintf(stderr, \"before transfer, counter %d\\n\", current_thread_state->gilstate_counter);
+    // fprintf(stderr, \"before transfer, counter %d %d %ld\\n\", current_thread_state->gilstate_counter, tls_id, current_thread_state->thread_id);
     
     PyGILState_Release(gil_state);
 }
@@ -291,6 +290,9 @@ static void after_transfer_callback(void)
 {
     PyGILState_STATE gil_state = PyGILState_Ensure();
     PyThreadState* current_thread_state = PyThreadState_Get(); 
+    long current_thread_id = current_thread_state->thread_id;
+    void (*current_on_delete)(void *) = current_thread_state->on_delete;
+    void* current_on_delete_data = current_thread_state->on_delete_data;
 
     // Search for dict to check whether this lightweight thread has executed 
     // before
@@ -304,16 +306,16 @@ static void after_transfer_callback(void)
     } else {
         // Restore the old lightweight thread
         PyThreadState* target_thread_state = &target_map->ts;
-        current_thread_state->frame = target_thread_state->frame;
-        current_thread_state->recursion_depth = target_thread_state->recursion_depth;
-        current_thread_state->overflowed = target_thread_state->overflowed;
-        current_thread_state->recursion_critical = target_thread_state->recursion_critical;
+        memcpy(current_thread_state, target_thread_state, sizeof(PyThreadState));
+        current_thread_state->thread_id = current_thread_id;
+        current_thread_state->on_delete = current_on_delete;
+        current_thread_state->on_delete_data = current_on_delete_data;
         // Delete item in dict and free resources
         HASH_DEL(dict, target_map);
         free(target_map);
-        // fprintf(stderr, \"after transfer, counter %d\\n\", current_thread_state->gilstate_counter);
     }
 
+    // fprintf(stderr, \"after transfer, counter %d %d %ld\\n\", current_thread_state->gilstate_counter, tls_id, current_thread_state->thread_id);
     PyGILState_Release(gil_state); 
 }
 
