@@ -215,6 +215,9 @@ ffi.set_source("build._hpx",
 """
 #include <hpx/hpx.h>
 #include "uthash/uthash.h"
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
 hpx_type_t HPX_CHAR_lvalue = HPX_CHAR;
 hpx_type_t HPX_UCHAR_lvalue = HPX_UCHAR;
 hpx_type_t HPX_SCHAR_lvalue = HPX_SCHAR;
@@ -249,10 +252,19 @@ hpx_type_t HPX_SIZE_T_lvalue = HPX_SIZE_T;
 typedef struct thread_state_map thread_state_map;
 struct thread_state_map {
     int tls_id;
-    PyThreadState* ts;
+    PyThreadState ts;
     UT_hash_handle hh;
 };
 thread_state_map* dict = NULL;
+
+static void begin_callback(void)
+{
+    PyGILState_STATE gil_state = PyGILState_Ensure();
+    PyThreadState* current_thread_state = PyThreadState_Get();
+    ++current_thread_state->gilstate_counter; 
+    // fprintf(stderr, \"begin counter %d\\n\", current_thread_state->gilstate_counter);
+    PyGILState_Release(gil_state);
+}
 
 static void before_transfer_callback(void)
 {
@@ -265,10 +277,12 @@ static void before_transfer_callback(void)
     // Construct map
     thread_state_map* current_map = malloc(sizeof(thread_state_map));
     current_map->tls_id = tls_id;
-    current_map->ts = current_thread_state;
+    memcpy(&current_map->ts, current_thread_state, sizeof(PyThreadState));
     
     // Add map to dictionary
     HASH_ADD_INT(dict, tls_id, current_map);
+
+    // fprintf(stderr, \"before transfer, counter %d\\n\", current_thread_state->gilstate_counter);
     
     PyGILState_Release(gil_state);
 }
@@ -289,11 +303,15 @@ static void after_transfer_callback(void)
         PyThreadState_Clear(current_thread_state);
     } else {
         // Restore the old lightweight thread
-        PyThreadState* target_thread_state = target_map -> ts;
+        PyThreadState* target_thread_state = &target_map->ts;
         current_thread_state->frame = target_thread_state->frame;
         current_thread_state->recursion_depth = target_thread_state->recursion_depth;
         current_thread_state->overflowed = target_thread_state->overflowed;
         current_thread_state->recursion_critical = target_thread_state->recursion_critical;
+        // Delete item in dict and free resources
+        HASH_DEL(dict, target_map);
+        free(target_map);
+        // fprintf(stderr, \"after transfer, counter %d\\n\", current_thread_state->gilstate_counter);
     }
 
     PyGILState_Release(gil_state); 
@@ -301,9 +319,10 @@ static void after_transfer_callback(void)
 
 int hpx_custom_init(int *argc, char ***argv)
 {
-    int rtv = hpx_init(argc, argv);
+    register_begin_callback((CallbackType) begin_callback);
     register_before_transfer_callback((CallbackType) before_transfer_callback);
     register_after_transfer_callback((CallbackType) after_transfer_callback);
+    int rtv = hpx_init(argc, argv);
     return rtv;
 }
 
