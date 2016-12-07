@@ -218,6 +218,7 @@ ffi.set_source("build._hpx",
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+
 hpx_type_t HPX_CHAR_lvalue = HPX_CHAR;
 hpx_type_t HPX_UCHAR_lvalue = HPX_UCHAR;
 hpx_type_t HPX_SCHAR_lvalue = HPX_SCHAR;
@@ -259,64 +260,59 @@ thread_state_map* dict = NULL;
 
 static void begin_callback(void)
 {
-    PyGILState_STATE gil_state = PyGILState_Ensure();
-    PyThreadState* current_thread_state = PyThreadState_Get();
-    ++current_thread_state->gilstate_counter; 
-    PyGILState_Release(gil_state);
 }
 
 static void before_transfer_callback(void)
 {
-    PyGILState_STATE gil_state = PyGILState_Ensure();
-    
     // Get thread state and tls_id 
-    PyThreadState* current_thread_state = PyThreadState_Get();
+    PyThreadState* current_thread_state = PyGILState_GetThisThreadState();
     int tls_id = hpx_thread_get_tls_id();
     
-    // Construct map
-    thread_state_map* current_map = malloc(sizeof(thread_state_map));
-    current_map->tls_id = tls_id;
-    memcpy(&current_map->ts, current_thread_state, sizeof(PyThreadState));
-    
-    // Add map to dictionary
-    HASH_ADD_INT(dict, tls_id, current_map);
+    if(current_thread_state != NULL) { 
+        PyGILState_STATE gil_state = PyGILState_Ensure();
+        
+        // Construct map
+        thread_state_map* current_map = malloc(sizeof(thread_state_map));
+        current_map->tls_id = tls_id;
+        memcpy(&current_map->ts, current_thread_state, sizeof(PyThreadState));
+        
+        // Add map to dictionary
+        HASH_ADD_INT(dict, tls_id, current_map);
+        
+        // Clear current thread state
+        current_thread_state->gilstate_counter = 1; // to be cleared
+        PyGILState_Release(gil_state); 
+    }
 
-    // fprintf(stderr, \"before transfer, counter %d %d %ld\\n\", current_thread_state->gilstate_counter, tls_id, current_thread_state->thread_id);
-    
-    PyGILState_Release(gil_state);
+    fprintf(stderr, \"before transfer, lightweight %d\\n\", tls_id); 
 }
 
 static void after_transfer_callback(void)
 {
-    PyGILState_STATE gil_state = PyGILState_Ensure();
-    PyThreadState* current_thread_state = PyThreadState_Get(); 
-    long current_thread_id = current_thread_state->thread_id;
-    void (*current_on_delete)(void *) = current_thread_state->on_delete;
-    void* current_on_delete_data = current_thread_state->on_delete_data;
-
     // Search for dict to check whether this lightweight thread has executed 
     // before
     int tls_id = hpx_thread_get_tls_id();
     thread_state_map* target_map;
     HASH_FIND_INT(dict, &tls_id, target_map);
 
-    if(target_map == NULL) {
-        // This is a new lightweight thread
-        PyThreadState_Clear(current_thread_state);
-    } else {
+    if(target_map != NULL) {
+        PyGILState_STATE gil_state = PyGILState_Ensure();
+        PyThreadState* current_thread_state = PyThreadState_Get(); 
+
         // Restore the old lightweight thread
         PyThreadState* target_thread_state = &target_map->ts;
+        long current_thread_id = current_thread_state->thread_id;
         memcpy(current_thread_state, target_thread_state, sizeof(PyThreadState));
         current_thread_state->thread_id = current_thread_id;
-        current_thread_state->on_delete = current_on_delete;
-        current_thread_state->on_delete_data = current_on_delete_data;
+        
         // Delete item in dict and free resources
         HASH_DEL(dict, target_map);
         free(target_map);
+
+        PyGILState_Release(gil_state); 
     }
 
-    // fprintf(stderr, \"after transfer, counter %d %d %ld\\n\", current_thread_state->gilstate_counter, tls_id, current_thread_state->thread_id);
-    PyGILState_Release(gil_state); 
+    fprintf(stderr, \"after transfer, lightweight %d\\n\", tls_id);
 }
 
 int hpx_custom_init(int *argc, char ***argv)
@@ -324,6 +320,7 @@ int hpx_custom_init(int *argc, char ***argv)
     register_begin_callback((CallbackType) begin_callback);
     register_before_transfer_callback((CallbackType) before_transfer_callback);
     register_after_transfer_callback((CallbackType) after_transfer_callback);
+
     int rtv = hpx_init(argc, argv);
     return rtv;
 }
