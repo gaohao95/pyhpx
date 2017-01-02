@@ -218,6 +218,8 @@ ffi.set_source("build._hpx",
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <pythread.h>
+#include <pthread.h>
 
 hpx_type_t HPX_CHAR_lvalue = HPX_CHAR;
 hpx_type_t HPX_UCHAR_lvalue = HPX_UCHAR;
@@ -253,10 +255,12 @@ hpx_type_t HPX_SIZE_T_lvalue = HPX_SIZE_T;
 typedef struct thread_state_map thread_state_map;
 struct thread_state_map {
     int tls_id;
-    PyThreadState ts;
+    PyThreadState* ts;
     UT_hash_handle hh;
 };
-thread_state_map* dict = NULL;
+static thread_state_map* dict = NULL;
+static pthread_mutex_t dict_lock = PTHREAD_MUTEX_INITIALIZER;
+static int autoTLSkey = 0;
 
 static void begin_callback(void)
 {
@@ -269,50 +273,70 @@ static void before_transfer_callback(void)
     int tls_id = hpx_thread_get_tls_id();
     
     if(current_thread_state != NULL) { 
-        PyGILState_STATE gil_state = PyGILState_Ensure();
         
         // Construct map
         thread_state_map* current_map = malloc(sizeof(thread_state_map));
         current_map->tls_id = tls_id;
-        memcpy(&current_map->ts, current_thread_state, sizeof(PyThreadState));
+        current_map->ts = current_thread_state;
+
+        if(pthread_mutex_lock(&dict_lock) != 0) {
+            fprintf(stderr, \"Fatal: Error acquiring thread state dict mutex lock!\\n\");
+            exit(EXIT_FAILURE);
+        }
         
         // Add map to dictionary
         HASH_ADD_INT(dict, tls_id, current_map);
-        
-        // Clear current thread state
-        current_thread_state->gilstate_counter = 1; // to be cleared
-        PyGILState_Release(gil_state); 
-    }
 
-    fprintf(stderr, \"before transfer, lightweight %d\\n\", tls_id); 
+        if(pthread_mutex_unlock(&dict_lock) != 0) {
+            fprintf(stderr, \"Fatal: Error releasing thread state dict mutex lock!\\n\");
+            exit(EXIT_FAILURE);
+        }
+        
+        assert(current_thread_state == PyThread_get_key_value(autoTLSkey));
+
+        // modify TLS
+        PyThread_delete_key_value(autoTLSkey);
+    }
 }
 
 static void after_transfer_callback(void)
 {
+    
+    if(pthread_mutex_lock(&dict_lock) != 0) {
+        fprintf(stderr, \"Fatal: Error acquiring thread state dict mutex lock!\\n\");
+        exit(EXIT_FAILURE);
+    }
+
     // Search for dict to check whether this lightweight thread has executed 
     // before
     int tls_id = hpx_thread_get_tls_id();
     thread_state_map* target_map;
     HASH_FIND_INT(dict, &tls_id, target_map);
-
+    PyThreadState* target_thread_state = 
+    (target_map == NULL ? NULL : target_map->ts); 
+    
+    // Delete item in dict and free resources
     if(target_map != NULL) {
-        PyGILState_STATE gil_state = PyGILState_Ensure();
-        PyThreadState* current_thread_state = PyThreadState_Get(); 
-
-        // Restore the old lightweight thread
-        PyThreadState* target_thread_state = &target_map->ts;
-        long current_thread_id = current_thread_state->thread_id;
-        memcpy(current_thread_state, target_thread_state, sizeof(PyThreadState));
-        current_thread_state->thread_id = current_thread_id;
-        
-        // Delete item in dict and free resources
         HASH_DEL(dict, target_map);
         free(target_map);
-
-        PyGILState_Release(gil_state); 
+    }
+    
+    if(pthread_mutex_unlock(&dict_lock) != 0) {
+        fprintf(stderr, \"Fatal: Error releasing thread state dict mutex lock!\\n\");
+        exit(EXIT_FAILURE);
     }
 
-    fprintf(stderr, \"after transfer, lightweight %d\\n\", tls_id);
+    if(target_thread_state != NULL) {
+
+        assert(PyGILState_GetThisThreadState() == NULL);
+
+        // Restore the old lightweight thread
+        target_thread_state -> thread_id = PyThread_get_thread_ident();       
+        if(PyThread_set_key_value(autoTLSkey, (void *)target_thread_state) < 0) {
+            fprintf(stderr, \"Fatal: Cannot update TLS\\n\");
+            exit(EXIT_FAILURE);
+        }
+    }
 }
 
 int hpx_custom_init(int *argc, char ***argv)
