@@ -1,3 +1,0 @@
-[submodule "source/contrib/cffi"]
-	path = source/contrib/cffi
-	url = https://github.com/gaohao95/cffi
