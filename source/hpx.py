@@ -348,7 +348,7 @@ def exit(array=None):
     """
     if array is not None:
         size = array.size * array.dtype.itemsize
-        lib.hpx_exit(size, array.__array_interface__['data'][0])
+        lib.hpx_exit(size, ffi.cast("void *", array.__array_interface__['data'][0]))
     else:
         lib.hpx_exit(0, ffi.NULL)
 
@@ -362,26 +362,32 @@ def run(action, *args, shape=None, dtype=None):
     through a single explicit call to hpx.exit().
 
     Args:
-        action (hpx.BaseAction): An action to execute.
-        *args: The arguments of this action.
+        action (hpx.BaseAction): The action to execute.
+        *args: Arguments of this action.
+        shape: Shape of numpy array returned.
     """
     if action.marshalled:
-        args_pointer, size = _parse_marshalled_args(args) 
+        args_pointer, size = _parse_marshalled_args(args)
+        if shape is None:
+            status = lib._hpx_run(action.id, ffi.NULL, 2, args_pointer, size)
+        else:
+            rtv = np.zeros(shape, dtype=dtype)
+            rtv_pointer = ffi.cast("void*", rtv.__array_interface__['data'][0])
+            status = lib._hpx_run(action.id, rtv_pointer, 2, args_pointer, size)
     else:
         c_args = action._generate_c_arguments(*args)
-
-    if shape is None:
-        if action.marshalled:
-            status = lib._hpx_run(action.id, ffi.NULL, 2, args_pointer, size) 
-        else:
+        if shape is None:
             status = lib._hpx_run(action.id, ffi.NULL, len(c_args), *c_args)
-    else:
-        rtv = np.zeros(shape, dtype=dtype)
-        rtv_pointer = ffi.cast("void*", rtv.__array_interface__['data'][0])
-        status = lib._hpx_run(action.id, rtv_pointer, len(c_args), *c_args)
+        else:
+            rtv = np.zeros(shape, dtype=dtype)
+            rtv_pointer = ffi.cast("void*", rtv.__array_interface__['data'][0])
+            status = lib._hpx_run(action.id, rtv_pointer, len(c_args), *c_args)
 
     if status != lib.HPX_SUCCESS:
         raise RuntimeError("hpx.run failed")
+
+    if shape is not None:
+        return rtv
 
 def finalize():
     """Finalize/cleanup from the HPX runtime.

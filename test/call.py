@@ -1,11 +1,13 @@
 import hpx
+import numpy as np
 
 @hpx.create_action()
 def main():
     future = hpx.Future()
     set_lco(hpx.HERE(), future, 2)
     future.wait()
-    hpx.exit()
+    rtv = np.arange(6).reshape((2, 3))
+    hpx.exit(rtv)
 
 @hpx.create_action()
 def set_lco(lco, unused_int):
@@ -15,5 +17,6 @@ def set_lco(lco, unused_int):
 
 if __name__ == '__main__':
     hpx.init()
-    hpx.run(main)
+    rtv = hpx.run(main, shape=(2, 3), dtype=np.dtype(int))
+    assert np.array_equal(rtv, np.arange(6).reshape((2, 3)))
     hpx.finalize()
