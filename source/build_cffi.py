@@ -110,10 +110,12 @@ int hpx_register_action(hpx_action_type_t type, uint32_t attr, const char *key,
 /* Begin Runtime.h */
 
 int hpx_init(int *argc, char ***argv);
-void hpx_finalize();
+void hpx_finalize(void);
 void hpx_exit(size_t bytes, const void *out);
 int _hpx_run(hpx_action_t *entry, void *out, int nargs, ...);
 void hpx_print_help(void);
+int hpx_custom_init(int *argc, char ***argv);
+void hpx_custom_finalize(void);
 
 /* End Runtime.h */
 
@@ -126,7 +128,10 @@ void hpx_parcel_set_action(hpx_parcel_t *p, hpx_action_t action);
 
 /* Begin topology.h */
 
+int hpx_get_my_rank(void);
 int hpx_get_num_ranks(void);
+int hpx_get_num_threads(void);
+int hpx_get_my_thread_id(void);
 
 /* End topology.h */
 
@@ -204,9 +209,18 @@ int _hpx_call_cc(hpx_addr_t addr, hpx_action_t action, int n, ...);
 
 """)
 
+compile_include_dirs.append('contrib')
+
 ffi.set_source("build._hpx",
 """
 #include <hpx/hpx.h>
+#include "uthash/uthash.h"
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <pythread.h>
+#include <pthread.h>
+
 hpx_type_t HPX_CHAR_lvalue = HPX_CHAR;
 hpx_type_t HPX_UCHAR_lvalue = HPX_UCHAR;
 hpx_type_t HPX_SCHAR_lvalue = HPX_SCHAR;
@@ -237,6 +251,109 @@ hpx_type_t HPX_LONGDOUBLE_lvalue = HPX_LONGDOUBLE;
 // hpx_type_t HPX_COMPLEX_LONGDOUBLE_lvalue = HPX_COMPLEX_LONGDOUBLE;
 hpx_type_t HPX_ADDR_lvalue = HPX_ADDR;
 hpx_type_t HPX_SIZE_T_lvalue = HPX_SIZE_T;
+
+typedef struct thread_state_map thread_state_map;
+struct thread_state_map {
+    int tls_id;
+    PyThreadState* ts;
+    UT_hash_handle hh;
+};
+static thread_state_map* dict = NULL;
+static pthread_mutex_t dict_lock = PTHREAD_MUTEX_INITIALIZER;
+static int autoTLSkey = 0;
+
+static void begin_callback(void)
+{
+}
+
+static void before_transfer_callback(void)
+{
+    // Get thread state and tls_id 
+    PyThreadState* current_thread_state = PyGILState_GetThisThreadState();
+    int tls_id = hpx_thread_get_tls_id();
+    
+    if(current_thread_state != NULL) { 
+        
+        // Construct map
+        thread_state_map* current_map = malloc(sizeof(thread_state_map));
+        current_map->tls_id = tls_id;
+        current_map->ts = current_thread_state;
+
+        if(pthread_mutex_lock(&dict_lock) != 0) {
+            fprintf(stderr, \"Fatal: Error acquiring thread state dict mutex lock!\\n\");
+            exit(EXIT_FAILURE);
+        }
+        
+        // Add map to dictionary
+        HASH_ADD_INT(dict, tls_id, current_map);
+
+        if(pthread_mutex_unlock(&dict_lock) != 0) {
+            fprintf(stderr, \"Fatal: Error releasing thread state dict mutex lock!\\n\");
+            exit(EXIT_FAILURE);
+        }
+        
+        assert(current_thread_state == PyThread_get_key_value(autoTLSkey));
+
+        // modify TLS
+        PyThread_delete_key_value(autoTLSkey);
+    }
+}
+
+static void after_transfer_callback(void)
+{
+    
+    if(pthread_mutex_lock(&dict_lock) != 0) {
+        fprintf(stderr, \"Fatal: Error acquiring thread state dict mutex lock!\\n\");
+        exit(EXIT_FAILURE);
+    }
+
+    // Search for dict to check whether this lightweight thread has executed 
+    // before
+    int tls_id = hpx_thread_get_tls_id();
+    thread_state_map* target_map;
+    HASH_FIND_INT(dict, &tls_id, target_map);
+    PyThreadState* target_thread_state = 
+    (target_map == NULL ? NULL : target_map->ts); 
+    
+    // Delete item in dict and free resources
+    if(target_map != NULL) {
+        HASH_DEL(dict, target_map);
+        free(target_map);
+    }
+    
+    if(pthread_mutex_unlock(&dict_lock) != 0) {
+        fprintf(stderr, \"Fatal: Error releasing thread state dict mutex lock!\\n\");
+        exit(EXIT_FAILURE);
+    }
+
+    if(target_thread_state != NULL) {
+
+        assert(PyGILState_GetThisThreadState() == NULL);
+
+        // Restore the old lightweight thread
+        target_thread_state -> thread_id = PyThread_get_thread_ident();       
+        if(PyThread_set_key_value(autoTLSkey, (void *)target_thread_state) < 0) {
+            fprintf(stderr, \"Fatal: Cannot update TLS\\n\");
+            exit(EXIT_FAILURE);
+        }
+    }
+}
+
+int hpx_custom_init(int *argc, char ***argv)
+{
+    register_begin_callback((CallbackType) begin_callback);
+    register_before_transfer_callback((CallbackType) before_transfer_callback);
+    register_after_transfer_callback((CallbackType) after_transfer_callback);
+
+    int rtv = hpx_init(argc, argv);
+    return rtv;
+}
+
+void hpx_custom_finalize(void)
+{
+    hpx_finalize();
+}
+
 """,
                libraries=compile_libraries,
                include_dirs=compile_include_dirs,

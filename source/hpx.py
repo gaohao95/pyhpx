@@ -6,6 +6,7 @@ import numpy as np
 from abc import ABCMeta, abstractmethod
 from collections import deque
 import pickle
+import logging
 
 # {{{ Define HPX status
 
@@ -110,6 +111,7 @@ class BaseAction(metaclass=ABCMeta):
         if key is None:
             key = ((python_func.__module__ + ":" + python_func.__name__)
                   .encode('ascii'))
+        self.key = key
 
         self.marshalled = marshalled
         self.pinned = pinned
@@ -174,6 +176,9 @@ class BaseAction(metaclass=ABCMeta):
         if target_addr is hpx.NULL(), then the action is launched on every
         locality of this process.
         """
+        logging.debug("rank {0} on thread {1} calling action {2}".format(
+                     get_my_rank(), get_my_thread_id(), self.key))
+
         if self.marshalled:
             pointer, size = _parse_marshalled_args(args)
         else:
@@ -181,7 +186,8 @@ class BaseAction(metaclass=ABCMeta):
 
         lsync_addr = _get_lco_addr(lsync_lco)
         rsync_addr = _get_lco_addr(rsync_lco)
-
+        
+        # broadcast action 
         if (isinstance(target_addr, GlobalAddress) and 
             target_addr.addr == lib.HPX_NULL):
             if self.pinned:
@@ -288,8 +294,8 @@ def create_function(key=None, marshalled=True, pinned=False,
     return decorator
 
 def _parse_marshalled_args(args):
-    args_bytes = pickle.dumps(args)
-    pointer = ffi.from_buffer(bytearray(args_bytes))
+    args_bytes = bytearray(pickle.dumps(args))
+    pointer = ffi.from_buffer(args_bytes)
     size = ffi.cast("size_t", sys.getsizeof(args_bytes))
     return pointer, size
 
@@ -311,7 +317,6 @@ def init(argv=[]):
         RuntimeError: If the initialization fails.
     """
     # TODO: remove hpx specifig flags in argv
-
     if len(argv) == 0:
         c_argc = ffi.NULL
         c_argv_address = ffi.NULL
@@ -323,7 +328,7 @@ def init(argv=[]):
             c_argv_obj.append(ffi.new("char[]", argv[i].encode('ascii')))
             c_argv[i] = c_argv_obj[i]
         c_argv_address = ffi.new("char ***", c_argv)
-    if lib.hpx_init(c_argc, c_argv_address) != SUCCESS:
+    if lib.hpx_custom_init(c_argc, c_argv_address) != SUCCESS:
         raise RuntimeError("hpx.init failed")
 
 def exit(array=None):
@@ -343,7 +348,7 @@ def exit(array=None):
     """
     if array is not None:
         size = array.size * array.dtype.itemsize
-        lib.hpx_exit(size, array.__array_interface__['data'][0])
+        lib.hpx_exit(size, ffi.cast("void *", array.__array_interface__['data'][0]))
     else:
         lib.hpx_exit(0, ffi.NULL)
 
@@ -357,26 +362,32 @@ def run(action, *args, shape=None, dtype=None):
     through a single explicit call to hpx.exit().
 
     Args:
-        action (hpx.BaseAction): An action to execute.
-        *args: The arguments of this action.
+        action (hpx.BaseAction): The action to execute.
+        *args: Arguments of this action.
+        shape: Shape of numpy array returned.
     """
     if action.marshalled:
-        args_pointer, size = _parse_marshalled_args(args) 
+        args_pointer, size = _parse_marshalled_args(args)
+        if shape is None:
+            status = lib._hpx_run(action.id, ffi.NULL, 2, args_pointer, size)
+        else:
+            rtv = np.zeros(shape, dtype=dtype)
+            rtv_pointer = ffi.cast("void*", rtv.__array_interface__['data'][0])
+            status = lib._hpx_run(action.id, rtv_pointer, 2, args_pointer, size)
     else:
         c_args = action._generate_c_arguments(*args)
-
-    if shape is None:
-        if action.marshalled:
-            status = lib._hpx_run(action.id, ffi.NULL, 2, args_pointer, size) 
-        else:
+        if shape is None:
             status = lib._hpx_run(action.id, ffi.NULL, len(c_args), *c_args)
-    else:
-        rtv = np.zeros(shape, dtype=dtype)
-        rtv_pointer = ffi.cast("void*", rtv.__array_interface__['data'][0])
-        status = lib._hpx_run(action.id, rtv_pointer, len(c_args), *c_args)
+        else:
+            rtv = np.zeros(shape, dtype=dtype)
+            rtv_pointer = ffi.cast("void*", rtv.__array_interface__['data'][0])
+            status = lib._hpx_run(action.id, rtv_pointer, len(c_args), *c_args)
 
     if status != lib.HPX_SUCCESS:
         raise RuntimeError("hpx.run failed")
+
+    if shape is not None:
+        return rtv
 
 def finalize():
     """Finalize/cleanup from the HPX runtime.
@@ -386,15 +397,12 @@ def finalize():
     must never be called after hpx.finalize().
 
     """
-    lib.hpx_finalize()
+    lib.hpx_custom_finalize()
 
 def print_help():
     lib.hpx_print_help()
 
 # }}} 
-
-def get_num_ranks():
-    return lib.hpx_get_num_ranks()
 
 def thread_current_pid():
     return lib.hpx_thread_current_pid()
@@ -918,6 +926,9 @@ def create_id_action(dtype, shape=None):
         @create_function(marshalled=False,
                          argument_types=[Type.POINTER, Type.SIZE_T])
         def callback_action(pointer, size):
+            logging.debug("rank {0} thread {1} start id callback {2}".format(
+                         get_my_rank(), get_my_thread_id(),
+                         python_func.__module__ + ':' + python_func.__name__))
             buf = ffi.buffer(pointer, size)
             array = np.frombuffer(buf, dtype=dtype)
             if shape is not None:
@@ -925,6 +936,9 @@ def create_id_action(dtype, shape=None):
             rtn = python_func(array)
             if rtn is not None:
                 array[:] = rtn
+            logging.debug("rank {0} thread {1} finish id callback {2}".format(
+                         get_my_rank(), get_my_thread_id(),
+                         python_func.__module__ + ':' + python_func.__name__))
         return callback_action
     return decorator
 
@@ -933,6 +947,9 @@ def create_op_action(dtype, shape=None):
         @create_function(marshalled=False, 
                 argument_types=[Type.POINTER, Type.POINTER, Type.SIZE_T])
         def callback_action(lhs, rhs, size):
+            logging.debug("rank {0} thread {1} start op callback {2}".format(
+                         get_my_rank(), get_my_thread_id(),
+                         python_func.__module__ + ':' + python_func.__name__))
             lhs_array = np.frombuffer(ffi.buffer(lhs, size), dtype=dtype)
             rhs_array = np.frombuffer(ffi.buffer(rhs, size), dtype=dtype)
             if shape is not None:
@@ -941,6 +958,9 @@ def create_op_action(dtype, shape=None):
             rtn = python_func(lhs_array, rhs_array)
             if rtn is not None:
                 lhs_array[:] = rtn
+            logging.debug("rank {0} thread {1} finish op callback {2}".format(
+                         get_my_rank(), get_my_thread_id(),
+                         python_func.__module__ + ':' + python_func.__name__))
         return callback_action
     return decorator 
 
@@ -956,3 +976,28 @@ class Reduce(LCO):
         super(Reduce, self).__init__(addr, shape, dtype) 
 # }}}
 
+# {{{ Logging
+
+def set_loglevel(loglevel: str):
+    numeric_level = getattr(logging, loglevel.upper(), None)
+    if not isinstance(numeric_level, int):
+        raise ValueError('Invalid log level: %s' % loglevel)
+    logging.basicConfig(level=numeric_level)
+
+# }}}
+
+# {{{ Topology
+
+def get_my_rank():
+    return lib.hpx_get_my_rank();
+
+def get_num_ranks():
+    return lib.hpx_get_num_ranks();
+
+def get_num_threads():
+    return lib.hpx_get_num_threads();
+
+def get_my_thread_id():
+    return lib.hpx_get_my_thread_id();
+
+# }}}
