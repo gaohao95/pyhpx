@@ -3,6 +3,7 @@ import math
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
 import logging
+import sys
 
 DATA_SIZE = 10000000
 DATA_RANGE = 100000.0
@@ -88,7 +89,7 @@ def main():
     hpx.exit()
 
 if __name__ == '__main__':
-    hpx.init()
+    hpx.init(sys.argv)
     hpx.run(main)
     hpx.finalize()
     
