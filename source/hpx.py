@@ -560,8 +560,6 @@ class GlobalAddressBlock:
             addr (GlobalAddr): The starting address of this block is given by 
                 self.addr + self.offsets[0]. self.addr will not change for 
                 indexing.
-            size (int): Total size of this address block, must be a multiple of
-                the size of `dtype`.
             dtype (numpy.dtype): The type of each object in address block
         """
         self.addr = addr
@@ -632,6 +630,46 @@ class GlobalAddressBlock:
         """ Unpin this address block.
         """
         self.addr.unpin()
+
+    def get(self, sync='lsync', lsync_lco=None):
+        """This copies data from a global address to a local buffer.
+
+        This operation is not atomic. GlobalAddressBlock.get with concurrent 
+        GlobalAddressBlock.set to overlapping addresses ranges will result in
+        a data race with undefined behavior. Users should synchronize with 
+        some out-of-band mechanism.
+
+        Args:
+            sync (string): can be 'lsync' or 'async'
+        """
+        from_addr = self.addr + self.offsets[0]
+        size = self.shape[0] * self.strides[0]
+        array = np.zeros((size//self.dtype.itemsize,), dtype=self.dtype)
+        arrayshape = [self.shape[0]]
+        for i in range(len(self.shape) - 1):
+            arrayshape.append(self.strides[i] // self.strides[i+1])
+        array = array.reshape(tuple(arrayshape))
+
+        if sync == 'lsync':
+            lib.hpx_gas_memget_sync(ffi.cast("void *", array.__array_interface__['data'][0]), 
+                                    from_addr.addr, size)
+            indexing = [slice(None, None)]
+            for i in range(1, len(self.shape)):
+                start = self.offsets[i] // self.strides[i]
+                stop = start + self.shape[i]
+                indexing.append(slice(start, stop))
+            return array[tuple(indexing)]
+        elif sync == 'async':
+            # TODO: How??
+            pass
+        elif isinstance(sync, str):
+            raise ValueError("'sync' argument needs to be either 'lsync' or "
+                             "'rsync'")
+        else:
+            raise TypeError("'sync' argument needs to be of type str")
+
+
+
 
 # }}}
 

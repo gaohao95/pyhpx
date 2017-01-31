@@ -66,6 +66,11 @@ def main():
     assert array[1, 2] == 10
     test_memory[1].unpin()
 
+    # test get
+    array = sub_block.get(sync='lsync')
+    assert array[0, 0] == 5
+    assert array[1, 1] == 10
+
     # test free
     test_memory[1:].free_sync()
     
