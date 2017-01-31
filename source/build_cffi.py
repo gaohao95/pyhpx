@@ -214,6 +214,7 @@ compile_include_dirs.append('contrib')
 ffi.set_source("build._hpx",
 """
 #include <hpx/hpx.h>
+#include <libhpx/libhpx.h>
 #include "uthash/uthash.h"
 #include <string.h>
 #include <stdlib.h>
@@ -341,9 +342,9 @@ static void after_transfer_callback(void)
 
 int hpx_custom_init(int *argc, char ***argv)
 {
-    register_begin_callback((CallbackType) begin_callback);
-    register_before_transfer_callback((CallbackType) before_transfer_callback);
-    register_after_transfer_callback((CallbackType) after_transfer_callback);
+    libhpx_register_begin_callback((CallbackType) begin_callback);
+    libhpx_register_before_transfer_callback((CallbackType) before_transfer_callback);
+    libhpx_register_after_transfer_callback((CallbackType) after_transfer_callback);
 
     int rtv = hpx_init(argc, argv);
     return rtv;
