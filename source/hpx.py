@@ -642,6 +642,13 @@ class GlobalAddressBlock:
         Args:
             sync (string): can be 'lsync' or 'async'
         """
+
+        # get only works on continuous memory block
+        assert self.shape[0] != 1
+        for i in range(1, len(self.shape)):
+            if self.shape[i] != self.strides[i-1]//self.strides[i]:
+                raise RuntimeError("GlobalAddressBlock.get must be applied on a continuous block")
+
         from_addr = self.addr + self.offsets[0]
         size = self.shape[0] * self.strides[0]
         array = np.zeros((size//self.dtype.itemsize,), dtype=self.dtype)
@@ -653,12 +660,9 @@ class GlobalAddressBlock:
         if sync == 'lsync':
             lib.hpx_gas_memget_sync(ffi.cast("void *", array.__array_interface__['data'][0]), 
                                     from_addr.addr, size)
-            indexing = [slice(None, None)]
-            for i in range(1, len(self.shape)):
-                start = self.offsets[i] // self.strides[i]
-                stop = start + self.shape[i]
-                indexing.append(slice(start, stop))
-            return array[tuple(indexing)]
+            start = self.offsets[0] // self.strides[0]
+            stop = start + self.shape[i]
+            return array[slice(start, stop)]
         elif sync == 'async':
             # TODO: How??
             pass
@@ -668,9 +672,7 @@ class GlobalAddressBlock:
         else:
             raise TypeError("'sync' argument needs to be of type str")
 
-
-
-
+        
 # }}}
 
 # {{{ GlobalMemory
