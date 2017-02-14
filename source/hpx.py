@@ -93,7 +93,7 @@ class BaseAction(metaclass=ABCMeta):
 
     @abstractmethod
     def __init__(self, python_func, action_type, key, marshalled, pinned, 
-                 argument_types):
+                 argument_types, array_types):
         """Register an HPX action.
         
         Note:
@@ -104,6 +104,8 @@ class BaseAction(metaclass=ABCMeta):
             action_type: Type of the action.
             key: A Python byte object to be specified as key for this action.
             argument_types: A Python list of argument types.
+            marshalled (string): Can be 'true', 'false', or 'continuous'
+            array_types: Type of the numpy array if marshalled is 'continuous'
         """
         self.id = ffi.new("hpx_action_t *")
         
@@ -116,7 +118,7 @@ class BaseAction(metaclass=ABCMeta):
         self.marshalled = marshalled
         self.pinned = pinned
 
-        if marshalled:
+        if marshalled == 'true':
             def callback_func(pointer, size):
                 args_bytes = ffi.buffer(pointer, size)[:]
                 args = pickle.loads(args_bytes)
@@ -133,6 +135,12 @@ class BaseAction(metaclass=ABCMeta):
             lib.hpx_register_action(action_type, lib.HPX_MARSHALLED, key, 
                                     self.id, 3, self._ffi_func, 
                                     Type.POINTER, Type.SIZE_T)
+        elif marshalled == 'continuous':
+            def callback_func(pointer, size):
+                array_arg = np.frombuffer(ffi.buffer(pointer, size), dtype=array_types)
+                # support pinned and continuous??
+                rtv = python_func(array_arg)
+                return rtv
         else:
             self._arguments_cdef = []
             for argument in argument_types:
@@ -179,8 +187,18 @@ class BaseAction(metaclass=ABCMeta):
         logging.debug("rank {0} on thread {1} calling action {2}".format(
                      get_my_rank(), get_my_thread_id(), self.key))
 
-        if self.marshalled:
+        if self.marshalled == 'true':
+            if self.pinned:
+                if not isinstance(target_addr, GlobalAddressBlock):
+                    raise TypeError("target_addr is not GlobalAddressBlock object") 
+                expandargs = list(args)
+                expandargs.insert(0, target_addr)
+                args = tuple(expandargs)
             pointer, size = _parse_marshalled_args(args)
+        elif self.marshalled == 'continuous':
+            # support for pinned and continuous?
+            pointer = args[0].__array_interface__['data'][0]
+            size = args[0].nbytes
         else:
             c_args = self._generate_c_arguments(*args)
 
@@ -194,7 +212,7 @@ class BaseAction(metaclass=ABCMeta):
                 raise RuntimeError("Pinned action is not supported for"
                         "broadcast.")
             if sync == 'lsync':
-                if self.marshalled:
+                if self.marshalled == 'true' or self.marshalled == 'continous':
                     lib._hpx_process_broadcast_lsync(
                             lib.hpx_thread_current_pid(), self.id[0], 
                             rsync_addr, 2, pointer, size)
@@ -203,7 +221,7 @@ class BaseAction(metaclass=ABCMeta):
                             lib.hpx_thread_current_pid(), self.id[0],
                             rsync_addr, len(c_args), *c_args)
             elif sync == 'rsync':
-                if self.marshalled:
+                if self.marshalled == 'true' or self.marshalled == 'continuous':
                     lib._hpx_process_broadcast_rsync(
                             lib.hpx_thread_current_pid(), self.id[0],
                             2, pointer, size)
@@ -212,7 +230,7 @@ class BaseAction(metaclass=ABCMeta):
                             lib.hpx_thread_current_pid(), self.id[0],
                             len(c_args), *c_args)
             elif sync == 'async':
-                if self.marshalled:
+                if self.marshalled == 'true' or self.marshalled == 'continuous':
                     lib._hpx_process_broadcast(lib.hpx_thread_current_pid(),
                         self.id[0], lsync_addr, rsync_addr, 2, pointer, size)
                 else:
@@ -236,14 +254,7 @@ class BaseAction(metaclass=ABCMeta):
 
         if gate is None:
             if sync == 'lsync':
-                if self.marshalled:
-                    if self.pinned:
-                        if not isinstance(target_addr, GlobalAddressBlock):
-                            raise TypeError("target_addr is not GlobalAddressBlock object") 
-                        expandargs = list(args)
-                        expandargs.insert(0, target_addr)
-                        args = tuple(expandargs)
-                    pointer, size = _parse_marshalled_args(args)
+                if self.marshalled == 'true' or self.marshalled == 'continous':
                     lib._hpx_call(target_addr_int, self.id[0], rsync_addr, 2, pointer, size)
                 else:
                     lib._hpx_call(target_addr_int, self.id[0], rsync_addr, len(c_args), *args)
@@ -265,32 +276,32 @@ class BaseAction(metaclass=ABCMeta):
 
 
 class Action(BaseAction):
-    def __init__(self, python_func, key=None, marshalled=True, pinned=False, 
-                 argument_types=None):
+    def __init__(self, python_func, key=None, marshalled='true', pinned=False, 
+                 argument_types=None, array_types=None):
         return super(Action, self).__init__(python_func, lib.HPX_DEFAULT, key, 
-                                            marshalled, pinned, argument_types)
+                                            marshalled, pinned, argument_types, array_types)
 
-def create_action(key=None, marshalled=True, pinned=False, 
-                  argument_types=None):
+def create_action(key=None, marshalled='true', pinned=False, 
+                  argument_types=None, array_types=None):
     def decorator(python_func):
-        return Action(python_func, key, marshalled, pinned, argument_types)
+        return Action(python_func, key, marshalled, pinned, argument_types, array_types)
     return decorator
 
 
 class Function(BaseAction):
     def __init__(self, python_func, key=None, marshalled=True, pinned=False,
-                 argument_types=None):
+                 argument_types=None, array_types=None):
         return super(Function, self).__init__(python_func, lib.HPX_FUNCTION, 
                                               key, marshalled, pinned,
-                                              argument_types) 
+                                              argument_types, array_types) 
     
     def __call__(self, *args):
         raise RuntimeError("Funtion action is not callable")
 
 def create_function(key=None, marshalled=True, pinned=False,
-                    argument_types=None):
+                    argument_types=None, array_types=None):
     def decorator(python_func):
-        return Function(python_func, key, marshalled, pinned, argument_types)
+        return Function(python_func, key, marshalled, pinned, argument_types, array_types=None)
     return decorator
 
 def _parse_marshalled_args(args):
