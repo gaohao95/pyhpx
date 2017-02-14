@@ -93,7 +93,7 @@ class BaseAction(metaclass=ABCMeta):
 
     @abstractmethod
     def __init__(self, python_func, action_type, key, marshalled, pinned, 
-                 argument_types, array_types):
+                 argument_types, array_type):
         """Register an HPX action.
         
         Note:
@@ -105,7 +105,7 @@ class BaseAction(metaclass=ABCMeta):
             key: A Python byte object to be specified as key for this action.
             argument_types: A Python list of argument types.
             marshalled (string): Can be 'true', 'false', or 'continuous'
-            array_types: Type of the numpy array if marshalled is 'continuous'
+            array_type: Type of the numpy array if marshalled is 'continuous'
         """
         self.id = ffi.new("hpx_action_t *")
         
@@ -137,7 +137,7 @@ class BaseAction(metaclass=ABCMeta):
                                     Type.POINTER, Type.SIZE_T)
         elif marshalled == 'continuous':
             def callback_func(pointer, size):
-                array_arg = np.frombuffer(ffi.buffer(pointer, size), dtype=array_types)
+                array_arg = np.frombuffer(ffi.buffer(pointer, size), dtype=array_type)
                 # support pinned and continuous??
                 rtv = python_func(array_arg)
                 return rtv
@@ -277,31 +277,31 @@ class BaseAction(metaclass=ABCMeta):
 
 class Action(BaseAction):
     def __init__(self, python_func, key=None, marshalled='true', pinned=False, 
-                 argument_types=None, array_types=None):
+                 argument_types=None, array_type=None):
         return super(Action, self).__init__(python_func, lib.HPX_DEFAULT, key, 
-                                            marshalled, pinned, argument_types, array_types)
+                                            marshalled, pinned, argument_types, array_type)
 
 def create_action(key=None, marshalled='true', pinned=False, 
-                  argument_types=None, array_types=None):
+                  argument_types=None, array_type=None):
     def decorator(python_func):
-        return Action(python_func, key, marshalled, pinned, argument_types, array_types)
+        return Action(python_func, key, marshalled, pinned, argument_types, array_type)
     return decorator
 
 
 class Function(BaseAction):
     def __init__(self, python_func, key=None, marshalled=True, pinned=False,
-                 argument_types=None, array_types=None):
+                 argument_types=None, array_type=None):
         return super(Function, self).__init__(python_func, lib.HPX_FUNCTION, 
                                               key, marshalled, pinned,
-                                              argument_types, array_types) 
+                                              argument_types, array_type) 
     
     def __call__(self, *args):
         raise RuntimeError("Funtion action is not callable")
 
 def create_function(key=None, marshalled=True, pinned=False,
-                    argument_types=None, array_types=None):
+                    argument_types=None, array_type=None):
     def decorator(python_func):
-        return Function(python_func, key, marshalled, pinned, argument_types, array_types=None)
+        return Function(python_func, key, marshalled, pinned, argument_types, array_type=None)
     return decorator
 
 def _parse_marshalled_args(args):
