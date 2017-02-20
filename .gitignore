@@ -1,5 +1,11 @@
 *.pyc
 *.swp
 
+# no perf output
+perf.data
+perf.data.old
+
+# no PyCharm configuration file
+.idea/
 
 
