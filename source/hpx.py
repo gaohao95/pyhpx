@@ -145,7 +145,6 @@ class BaseAction(metaclass=ABCMeta):
             lib.hpx_register_action(action_type, lib.HPX_MARSHALLED, key, self.id, 3, 
                                     self._ffi_func, Type.POINTER, Type.SIZE_T)
         else:
-            self._arguments_cdef = []
             for argument in argument_types:
                 if isinstance(argument, tuple):
                     if argument[0] != Type.LCO:
@@ -286,6 +285,24 @@ class Action(BaseAction):
 
 def create_action(key=None, marshalled='true', pinned=False, 
                   argument_types=None, array_type=None):
+    """ Create an `Action` object.
+
+    Args:
+        key (bytes): An optional argument if you would like to support action key 
+            yourself.
+        marshalled (string): The value of this argument can be 'true', 'continuous', or 
+            'false'. If this argument is 'true', this action is an marshalled action. If 
+            this argument is 'continous', only one numpy array can be specified as 
+            argument, and `array_types` argument needs to be specified. If this argument 
+            is 'false', this action is not marshalled, and you need to specify the 
+            argument types in the `argument_types` argument.
+        pinned (bool): If this action is pinned, the first argument is the pinned 
+            `GlobalAddressBlock`.
+        argument_types (list): Only needed if `marshalled` is false when argument types
+            are needed. This should be a list of `Type` object.
+        array_types (numpy.dtype): Only needed if `marshalled` is `continuous` to 
+            specify the type of the numpy array in the argument.
+    """
     def decorator(python_func):
         return Action(python_func, key, marshalled, pinned, argument_types, array_type)
     return decorator
