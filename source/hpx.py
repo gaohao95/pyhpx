@@ -141,6 +141,9 @@ class BaseAction(metaclass=ABCMeta):
                 # support pinned and continuous??
                 rtv = python_func(array_arg)
                 return rtv
+            self._ffi_func = ffi.callback("int (void*, size_t)")(callback_func)
+            lib.hpx_register_action(action_type, lib.HPX_MARSHALLED, key, self.id, 3, 
+                                    self._ffi_func, Type.POINTER, Type.SIZE_T)
         else:
             self._arguments_cdef = []
             for argument in argument_types:
@@ -197,8 +200,8 @@ class BaseAction(metaclass=ABCMeta):
             pointer, size = _parse_marshalled_args(args)
         elif self.marshalled == 'continuous':
             # support for pinned and continuous?
-            pointer = args[0].__array_interface__['data'][0]
-            size = args[0].nbytes
+            pointer = ffi.cast("void *", args[0].__array_interface__['data'][0])
+            size = ffi.cast("size_t", args[0].nbytes)
         else:
             c_args = self._generate_c_arguments(*args)
 
@@ -254,7 +257,7 @@ class BaseAction(metaclass=ABCMeta):
 
         if gate is None:
             if sync == 'lsync':
-                if self.marshalled == 'true' or self.marshalled == 'continous':
+                if self.marshalled == 'true' or self.marshalled == 'continuous':
                     lib._hpx_call(target_addr_int, self.id[0], rsync_addr, 2, pointer, size)
                 else:
                     lib._hpx_call(target_addr_int, self.id[0], rsync_addr, len(c_args), *args)
@@ -289,7 +292,7 @@ def create_action(key=None, marshalled='true', pinned=False,
 
 
 class Function(BaseAction):
-    def __init__(self, python_func, key=None, marshalled=True, pinned=False,
+    def __init__(self, python_func, key=None, marshalled='true', pinned=False,
                  argument_types=None, array_type=None):
         return super(Function, self).__init__(python_func, lib.HPX_FUNCTION, 
                                               key, marshalled, pinned,
