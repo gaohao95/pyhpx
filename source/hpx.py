@@ -145,6 +145,7 @@ class BaseAction(metaclass=ABCMeta):
             lib.hpx_register_action(action_type, lib.HPX_MARSHALLED, key, self.id, 3, 
                                     self._ffi_func, Type.POINTER, Type.SIZE_T)
         else:
+            self._arguments_cdef = []
             for argument in argument_types:
                 if isinstance(argument, tuple):
                     if argument[0] != Type.LCO:
@@ -309,19 +310,18 @@ def create_action(key=None, marshalled='true', pinned=False,
 
 
 class Function(BaseAction):
-    def __init__(self, python_func, key=None, marshalled='true', pinned=False,
-                 argument_types=None, array_type=None):
-        return super(Function, self).__init__(python_func, lib.HPX_FUNCTION, 
-                                              key, marshalled, pinned,
-                                              argument_types, array_type) 
+    def __init__(self, python_func, argument_types, key=None):
+        return super(Function, self).__init__(python_func, lib.HPX_FUNCTION, key, 
+                                              marshalled='false', pinned=False,
+                                              argument_types=argument_types, 
+                                              array_type=None) 
     
     def __call__(self, *args):
         raise RuntimeError("Funtion action is not callable")
 
-def create_function(key=None, marshalled=True, pinned=False,
-                    argument_types=None, array_type=None):
+def create_function(argument_types, key=None):
     def decorator(python_func):
-        return Function(python_func, key, marshalled, pinned, argument_types, array_type=None)
+        return Function(python_func, argument_types, key)
     return decorator
 
 def _parse_marshalled_args(args):
@@ -994,8 +994,7 @@ class Future(LCO):
 
 def create_id_action(dtype, shape=None):
     def decorator(python_func):
-        @create_function(marshalled=False,
-                         argument_types=[Type.POINTER, Type.SIZE_T])
+        @create_function(argument_types=[Type.POINTER, Type.SIZE_T])
         def callback_action(pointer, size):
             logging.debug("rank {0} thread {1} start id callback {2}".format(
                          get_my_rank(), get_my_thread_id(),
@@ -1015,8 +1014,7 @@ def create_id_action(dtype, shape=None):
 
 def create_op_action(dtype, shape=None):
     def decorator(python_func):
-        @create_function(marshalled=False, 
-                argument_types=[Type.POINTER, Type.POINTER, Type.SIZE_T])
+        @create_function(argument_types=[Type.POINTER, Type.POINTER, Type.SIZE_T])
         def callback_action(lhs, rhs, size):
             logging.debug("rank {0} thread {1} start op callback {2}".format(
                          get_my_rank(), get_my_thread_id(),
