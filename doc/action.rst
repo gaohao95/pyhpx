@@ -14,6 +14,8 @@ which is used for callback by **LCO** like **Reduce**. Both **Action** class and
 Action Creation
 ---------------
 .. autofunction:: hpx.create_action
+.. autofunction:: hpx.create_function
+.. autofunction:: hpx.create_id_action
 
 Argument Types
 --------------

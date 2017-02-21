@@ -284,12 +284,12 @@ class Action(BaseAction):
         return super(Action, self).__init__(python_func, lib.HPX_DEFAULT, key, 
                                             marshalled, pinned, argument_types, array_type)
 
-def create_action(key=None, marshalled='true', pinned=False, 
-                  argument_types=None, array_type=None):
+def create_action(key=None, marshalled='true', pinned=False, argument_types=None, 
+                  array_type=None):
     """ Create an `Action` object.
 
     Args:
-        key (bytes): An optional argument if you would like to support action key 
+        key (bytes): An optional argument if you would like to support action identifier 
             yourself.
         marshalled (string): The value of this argument can be 'true', 'continuous', or 
             'false'. If this argument is 'true', this action is an marshalled action. If 
@@ -299,10 +299,16 @@ def create_action(key=None, marshalled='true', pinned=False,
             argument types in the `argument_types` argument.
         pinned (bool): If this action is pinned, the first argument is the pinned 
             `GlobalAddressBlock`.
-        argument_types (list): Only needed if `marshalled` is false when argument types
-            are needed. This should be a list of `Type` object.
+        argument_types (list): Only needed if `marshalled` is 'false' when argument 
+            types are needed. This should be a list of `Type` object.
         array_types (numpy.dtype): Only needed if `marshalled` is `continuous` to 
             specify the type of the numpy array in the argument.
+    
+    Returns:
+        A decorator which takes a function to register.
+
+    Note:
+        Action must be created before `hpx.init()`.
     """
     def decorator(python_func):
         return Action(python_func, key, marshalled, pinned, argument_types, array_type)
@@ -320,6 +326,19 @@ class Function(BaseAction):
         raise RuntimeError("Funtion action is not callable")
 
 def create_function(argument_types, key=None):
+    """ Create an Function object.
+
+    Args:
+        argument_types (list): A list of `Type` objects representing argument types.
+        key (bytes): An optional argument if you would like to support action identifier 
+            yourself.
+
+    Returns:
+        A decorator which takes a function to register.
+
+    Note:
+        Function must be created before `hpx.init()`.
+    """
     def decorator(python_func):
         return Function(python_func, argument_types, key)
     return decorator
@@ -993,6 +1012,23 @@ class Future(LCO):
         super(Future, self).__init__(addr, shape, dtype)
 
 def create_id_action(dtype, shape=None):
+    """ Create an Function object as initialization action of Reduce LCO.
+
+    This is a wrapper around hpx.create_function specifically for initialization action 
+    of Reduce LCO. There should be exactly one numpy array in the decorated function. 
+    You can modify this numpy array in place or return desired numpy array. 
+
+    Args:
+        dtype (numpy.dtype): The data type of the numpy array.
+        shape (tuple): An optional argument to represent the shape of the numpy array, 
+            if this argument is None, the shape is a linear one-dimentional array.
+
+    Returns:
+        A decorator which takes a function to register.
+
+    Note:
+        Action must be created before hpx.init().    
+    """
     def decorator(python_func):
         @create_function(argument_types=[Type.POINTER, Type.SIZE_T])
         def callback_action(pointer, size):
