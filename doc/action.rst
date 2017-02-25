@@ -16,6 +16,11 @@ Action Creation
 .. autofunction:: hpx.create_action
 .. autofunction:: hpx.create_function
 .. autofunction:: hpx.create_id_action
+.. autofunction:: hpx.create_op_action
+
+Action Invocation
+-----------------
+.. automethod:: hpx.BaseAction.__call__
 
 Argument Types
 --------------

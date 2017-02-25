@@ -180,12 +180,28 @@ class BaseAction(metaclass=ABCMeta):
 
     def __call__(self, target_addr, *args, sync='lsync', gate=None, 
                  lsync_lco=None, rsync_lco=None):
-        """
-        if this action is pinned, target_addr must be a GlobalAddressBlock, 
-        otherwise can be either GlobalAddressBlock or GlobalAddress.
+        """ Launch an Action.
 
-        if target_addr is hpx.NULL(), then the action is launched on every
-        locality of this process.
+        Args:
+            target_addr (Union[hpx.GlobalAddressBlock, hpx.GlobalAddress]): Specify the 
+                location where this action is launched. If this action is a pinned 
+                action, this argument must be a GlobalAddressBlock object. Otherwise, 
+                this argument can be either GlobalAddressBlock or GlobalAddress. You can 
+                launch this action on every locality of this process by specifing this 
+                argument to hpx.NULL().
+            sync (string): This argument can be either 'aysnc', lsync' or 'rsync'. If 
+                this argument is 'rsync', this is a completely synchronized call meaning
+                this function call will be blocked until the action is completed. If 
+                this argument is 'lsync', this is a locally synchronized call and you 
+                can reuse or change the argument buffer after this function call. If 
+                this argument is 'async', this is a completely asynchronized call, and
+                this function will return immediately.
+            gate (None): Not supported yet.
+            lsync_lco (hpx.LCO): An LCO object to trigger when the argument can be 
+                reused or changed. This is only meaningful when `sync` argument is 
+                'async'. 
+            rsync_lco (hpx.LCO): An LCO object ot trigger when the action is completed.
+                This is only meaningful when `sync` arugument is `async` or `lsync`.
         """
         logging.debug("rank {0} on thread {1} calling action {2}".format(
                      get_my_rank(), get_my_thread_id(), self.key))
@@ -305,7 +321,7 @@ def create_action(key=None, marshalled='true', pinned=False, argument_types=None
             specify the type of the numpy array in the argument.
     
     Returns:
-        A decorator which takes a function to register.
+        A decorator which takes a Python function to register.
 
     Note:
         Action must be created before `hpx.init()`.
@@ -334,7 +350,7 @@ def create_function(argument_types, key=None):
             yourself.
 
     Returns:
-        A decorator which takes a function to register.
+        A decorator which takes a Python function to register.
 
     Note:
         Function must be created before `hpx.init()`.
@@ -1024,7 +1040,7 @@ def create_id_action(dtype, shape=None):
             if this argument is None, the shape is a linear one-dimentional array.
 
     Returns:
-        A decorator which takes a function to register.
+        A decorator which takes a Python function to register.
 
     Note:
         Action must be created before hpx.init().    
@@ -1049,6 +1065,23 @@ def create_id_action(dtype, shape=None):
     return decorator
 
 def create_op_action(dtype, shape=None):
+    """ Create an Function object as reduction action of Reduce LCO.
+    
+    This is a wrapper around hpx.create_function specifically for reduction action of 
+    Reduce LCO. There should be exactly two numpy arrays in the decorated function. You 
+    can modify the first numpy array in place or return desired numpy array.
+
+    Args:
+        dtype (numpy.dtype): The data type of the numpy array.
+        shape (tuple): An optional argument to represent the shape of the numpy array, 
+            if this argument is None, the shape is a linear one-dimentional array.
+    
+    Returns:
+        A decorator which takes a Python function to register.
+
+    Note:
+        Action must be created before hpx.init().  
+    """
     def decorator(python_func):
         @create_function(argument_types=[Type.POINTER, Type.POINTER, Type.SIZE_T])
         def callback_action(lhs, rhs, size):
