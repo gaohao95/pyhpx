@@ -179,7 +179,7 @@ class BaseAction(metaclass=ABCMeta):
         return c_args
 
     def __call__(self, target_addr, *args, sync='lsync', gate=None, 
-                 lsync_lco=None, rsync_lco=None):
+                 lsync_lco=None, rsync_lco=None, out_array=None):
         """ Launch an Action.
 
         Args:
@@ -202,6 +202,10 @@ class BaseAction(metaclass=ABCMeta):
                 'async'. 
             rsync_lco (hpx.LCO): An LCO object ot trigger when the action is completed.
                 This is only meaningful when `sync` arugument is `async` or `lsync`.
+            out_array (numpy.ndarray): An numpy array to be filled with the return value
+                of the action. This argument is only meaningful when `sync` argument is 
+                'rsync'. If you do not care about the return value, you can specify this
+                argument to None(default).
         """
         logging.debug("rank {0} on thread {1} calling action {2}".format(
                      get_my_rank(), get_my_thread_id(), self.key))
@@ -278,17 +282,28 @@ class BaseAction(metaclass=ABCMeta):
                 else:
                     lib._hpx_call(target_addr_int, self.id[0], rsync_addr, len(c_args), *args)
             elif sync == 'rsync':
-                # How can user set the return value ?????
-                # TODO: handle the return value
-                lib._hpx_call_sync(target_addr.addr, self._id[0], ffi.NULL, 0, len(c_args), *args)
+                if out_array is not None:
+                    out_array_byte = out_array.nbytes
+                    out_array_pointer = ffi.cast("void *", 
+                        out_array.__array_interface__['data'][0])
+                else:
+                    out_array_byte = 0
+                    out_array_pointer = ffi.NULL
+                if self.marshalled == 'true' or self.marshalled == 'continuous':
+                    lib._hpx_call_sync(target_addr_int, self.id[0], out_array_pointer, 
+                        out_array_byte, 2, pointer, size)
+                else:
+                    lib._hpx_call_sync(target_addr_int, self.id[0], out_array_pointer, 
+                        out_array_byte, len(c_args), *args)
             elif sync == 'async':
-                lib._hpx_call_async(target_addr.addr, self._id[0], lsync_addr, rsync_addr,
+                lib._hpx_call_async(target_addr.addr, self.id[0], lsync_addr, rsync_addr,
                         len(c_args), *args)
             elif isinstance(sync, str):
                 raise ValueError("sync argument not recognizable")
             else:
                 raise TypeError("sync argument should be of type str")
         elif isinstance(gate, LCO):
+            # TODO: support gate argument
             pass
         else:
             raise TypeError("gate should be an instance of LCO")
