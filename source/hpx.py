@@ -332,7 +332,7 @@ def create_action(key=None, marshalled='true', pinned=False, argument_types=None
             `GlobalAddressBlock`.
         argument_types (list): Only needed if `marshalled` is 'false' when argument 
             types are needed. This should be a list of `Type` object.
-        array_types (numpy.dtype): Only needed if `marshalled` is `continuous` to 
+        array_type (numpy.dtype): Only needed if `marshalled` is `continuous` to 
             specify the type of the numpy array in the argument.
     
     Returns:
