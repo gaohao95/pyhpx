@@ -232,7 +232,7 @@ class BaseAction(metaclass=ABCMeta):
         if (isinstance(target_addr, GlobalAddress) and 
             target_addr.addr == lib.HPX_NULL):
             if self.pinned:
-                raise HPXError("Pinned action is not supported for broadcast.")
+                raise RuntimeError("Pinned action is not supported for broadcast.")
             if sync == 'lsync':
                 if self.marshalled == 'true' or self.marshalled == 'continous':
                     lib._hpx_process_broadcast_lsync(
@@ -353,7 +353,7 @@ class Function(BaseAction):
                                               array_type=None) 
     
     def __call__(self, *args):
-        raise HPXError("Funtion action is not callable")
+        raise RuntimeError("Funtion action is not callable")
 
 def create_function(argument_types, key=None):
     """ Create an Function object.
@@ -727,7 +727,7 @@ class GlobalAddressBlock:
         assert self.shape[0] != 1
         for i in range(1, len(self.shape)):
             if self.shape[i] != self.strides[i-1]//self.strides[i]:
-                raise HPXError("GlobalAddressBlock.get must be applied on a continuous block")
+                raise RuntimeError("GlobalAddressBlock.get must be applied on a continuous block")
 
         from_addr = self.addr + self.offsets[0]
         size = self.shape[0] * self.strides[0]
@@ -819,7 +819,8 @@ class GlobalMemory:
             dtype, strides, (0,)*(len(blockShape) + 1))
 
     @classmethod
-    def alloc_local_at_sync(cls, numBlock, blockShape, dtype, loc, boundary=0):
+    def alloc_local_at(cls, numBlock, blockShape, dtype, loc, boundary=0, sync='sync', 
+        lco=None):
         """Allocate a block of global memory.
 
         This is a non-collective call to allocate memory in the global
@@ -831,21 +832,27 @@ class GlobalMemory:
         
         Args:
             loc (GlobalAddress): The address which the allocation targets.
+            sync (string): this argument can be either 'sync' or 'async'. If this argument is 
+                'async', an optional argument `lco` can be provided for synchronization.
         """
         block_size = _calculate_block_size(blockShape, dtype)
-        addr = lib.hpx_gas_alloc_local_at_sync(numBlock, block_size, boundary, loc.addr)
         strides = GlobalMemory._calculate_strides(blockShape, dtype)
-        return cls(GlobalAddress(addr, block_size), numBlock, blockShape, 
-            dtype, strides, (0,)*(len(blockShape) + 1))
 
-    @classmethod
-    def alloc_local_at_async(cls, numBlock, blockShape, dtype, loc, lco, boundary=0):
-        """Allocate a block of global memory asynchronously
-        """
-        block_size = _calculate_block_size(blockShape, dtype)
-        addr = lib.hpx_gas_alloc_local_at_async(numBlock, block_size, boundary, 
-                                                loc.addr, lco.addr)
-        strides = GlobalMemory._calculate_strides(blockShape, dtype)
+        if sync == 'sync':
+            addr = lib.hpx_gas_alloc_local_at_sync(numBlock, block_size, boundary, loc.addr)
+        elif sync == 'async':
+            if isinstance(lco, LCO):
+                lco_addr = lco.addr
+            elif lco is None:
+                lco_addr = NULL()
+            else:
+                raise RuntimeError("Unrecognizable argument 'lco'")
+
+            addr = lib.hpx_gas_alloc_local_at_async(numBlock, block_size, boundary, loc.addr, 
+                lco_addr)
+        else:
+            raise RuntimeError("Unrecognizable argument 'sync'")
+
         return cls(GlobalAddress(addr, block_size), numBlock, blockShape, 
             dtype, strides, (0,)*(len(blockShape) + 1))
 
@@ -1157,8 +1164,8 @@ def get_my_thread_id():
 # {{{ Error handling
 
 def HPXError(Exception):
-    """ Base class for exceptions in this module
+    """ Base class for exceptions in HPX runtime
     """
     pass
 
-}}}
+# }}}

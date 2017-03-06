@@ -3,7 +3,7 @@ import numpy as np
 
 @hpx.create_action()
 def main():
-    test_memory = hpx.GlobalMemory.alloc_local_at_sync(3, (4,5), np.dtype(np.int), hpx.HERE())
+    test_memory = hpx.GlobalMemory.alloc_local_at(3, (4,5), np.dtype(np.int), hpx.HERE())
     
     # test strides and offset initialization
     itemsize = np.dtype(np.int).itemsize
