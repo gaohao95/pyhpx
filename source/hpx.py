@@ -232,8 +232,7 @@ class BaseAction(metaclass=ABCMeta):
         if (isinstance(target_addr, GlobalAddress) and 
             target_addr.addr == lib.HPX_NULL):
             if self.pinned:
-                raise RuntimeError("Pinned action is not supported for"
-                        "broadcast.")
+                raise HPXError("Pinned action is not supported for broadcast.")
             if sync == 'lsync':
                 if self.marshalled == 'true' or self.marshalled == 'continous':
                     lib._hpx_process_broadcast_lsync(
@@ -354,7 +353,7 @@ class Function(BaseAction):
                                               array_type=None) 
     
     def __call__(self, *args):
-        raise RuntimeError("Funtion action is not callable")
+        raise HPXError("Funtion action is not callable")
 
 def create_function(argument_types, key=None):
     """ Create an Function object.
@@ -395,7 +394,7 @@ def init(argv=[]):
         argv (list): List of command-line arguments.
 
     Raises:
-        RuntimeError: If the initialization fails.
+        HPXError: If the initialization fails.
     """
     # TODO: remove hpx specifig flags in argv
     if len(argv) == 0:
@@ -410,7 +409,7 @@ def init(argv=[]):
             c_argv[i] = c_argv_obj[i]
         c_argv_address = ffi.new("char ***", c_argv)
     if lib.hpx_custom_init(c_argc, c_argv_address) != SUCCESS:
-        raise RuntimeError("hpx.init failed")
+        raise HPXError("hpx.init failed")
 
 def exit(array=None):
     """Exit the HPX runtime.
@@ -465,7 +464,7 @@ def run(action, *args, shape=None, dtype=None):
             status = lib._hpx_run(action.id, rtv_pointer, len(c_args), *c_args)
 
     if status != lib.HPX_SUCCESS:
-        raise RuntimeError("hpx.run failed")
+        raise HPXError("hpx.run failed")
 
     if shape is not None:
         return rtv
@@ -563,13 +562,13 @@ class GlobalAddress:
             local = ffi.new("void **")
             rtv = lib.hpx_gas_try_pin(self.addr, local)
             if rtv == False:
-                raise RuntimeError("Pinning the global memory fails")
+                raise HPXError("Pinning the global memory fails")
             else:
                 return local[0]
         else:
             rtv = lib.hpx_gas_try_pin(self._addr, ffi.NULL)
             if rtv == False:
-                raise RuntimeError("Pinning the global memory fails")
+                raise HPXError("Pinning the global memory fails")
 
     def unpin(self):
         """Unpin this address.
@@ -728,7 +727,7 @@ class GlobalAddressBlock:
         assert self.shape[0] != 1
         for i in range(1, len(self.shape)):
             if self.shape[i] != self.strides[i-1]//self.strides[i]:
-                raise RuntimeError("GlobalAddressBlock.get must be applied on a continuous block")
+                raise HPXError("GlobalAddressBlock.get must be applied on a continuous block")
 
         from_addr = self.addr + self.offsets[0]
         size = self.shape[0] * self.strides[0]
@@ -1154,3 +1153,12 @@ def get_my_thread_id():
     return lib.hpx_get_my_thread_id();
 
 # }}}
+
+# {{{ Error handling
+
+def HPXError(Exception):
+    """ Base class for exceptions in this module
+    """
+    pass
+
+}}}
