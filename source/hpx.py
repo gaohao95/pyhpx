@@ -229,40 +229,42 @@ class BaseAction(metaclass=ABCMeta):
         rsync_addr = _get_lco_addr(rsync_lco)
         
         # broadcast action 
-        if (isinstance(target_addr, GlobalAddress) and 
-            target_addr.addr == lib.HPX_NULL):
+        if (isinstance(target_addr, GlobalAddress) and target_addr.addr == lib.HPX_NULL):
             if self.pinned:
                 raise RuntimeError("Pinned action is not supported for broadcast.")
             if sync == 'lsync':
                 if self.marshalled == 'true' or self.marshalled == 'continous':
-                    lib._hpx_process_broadcast_lsync(
+                    rtv = lib._hpx_process_broadcast_lsync(
                             lib.hpx_thread_current_pid(), self.id[0], 
                             rsync_addr, 2, pointer, size)
                 else:
-                    lib._hpx_process_broadcast_lsync(
+                    rtv = lib._hpx_process_broadcast_lsync(
                             lib.hpx_thread_current_pid(), self.id[0],
                             rsync_addr, len(c_args), *c_args)
             elif sync == 'rsync':
                 if self.marshalled == 'true' or self.marshalled == 'continuous':
-                    lib._hpx_process_broadcast_rsync(
+                    rtv = lib._hpx_process_broadcast_rsync(
                             lib.hpx_thread_current_pid(), self.id[0],
                             2, pointer, size)
                 else:
-                    lib._hpx_process_broadcast_rsync(
+                    rtv = lib._hpx_process_broadcast_rsync(
                             lib.hpx_thread_current_pid(), self.id[0],
                             len(c_args), *c_args)
             elif sync == 'async':
                 if self.marshalled == 'true' or self.marshalled == 'continuous':
-                    lib._hpx_process_broadcast(lib.hpx_thread_current_pid(),
+                    rtv = lib._hpx_process_broadcast(lib.hpx_thread_current_pid(),
                         self.id[0], lsync_addr, rsync_addr, 2, pointer, size)
                 else:
-                    lib._hpx_process_broadcast(lib.hpx_thread_current_pid(),
+                    rtv = lib._hpx_process_broadcast(lib.hpx_thread_current_pid(),
                         self.id[0], lsync_addr, rsync_addr,
                         len(c_args), *args)
             elif isinstance(sync, str):
                 raise NameError("unrecognized string for sync argument")
             else:
                 raise TypeError("sync argument should be of type str")
+            
+            if rtv != SUCCESS:
+                raise HPXError("action launch failed")
             return
 
         # get the address of target_addr of type int
@@ -271,15 +273,14 @@ class BaseAction(metaclass=ABCMeta):
         elif isinstance(target_addr, GlobalAddress):
             target_addr_int = target_addr.addr
         else:
-            raise TypeError("target_addr must be either GlobalAddressBlock or"
-                            "GlobalAddress")
+            raise TypeError("target_addr must be either GlobalAddressBlock or GlobalAddress")
 
         if gate is None:
             if sync == 'lsync':
                 if self.marshalled == 'true' or self.marshalled == 'continuous':
-                    lib._hpx_call(target_addr_int, self.id[0], rsync_addr, 2, pointer, size)
+                    rtv = lib._hpx_call(target_addr_int, self.id[0], rsync_addr, 2, pointer, size)
                 else:
-                    lib._hpx_call(target_addr_int, self.id[0], rsync_addr, len(c_args), *args)
+                    rtv = lib._hpx_call(target_addr_int, self.id[0], rsync_addr, len(c_args), *args)
             elif sync == 'rsync':
                 if out_array is not None:
                     out_array_byte = out_array.nbytes
@@ -289,13 +290,13 @@ class BaseAction(metaclass=ABCMeta):
                     out_array_byte = 0
                     out_array_pointer = ffi.NULL
                 if self.marshalled == 'true' or self.marshalled == 'continuous':
-                    lib._hpx_call_sync(target_addr_int, self.id[0], out_array_pointer, 
+                    rtv = lib._hpx_call_sync(target_addr_int, self.id[0], out_array_pointer, 
                         out_array_byte, 2, pointer, size)
                 else:
-                    lib._hpx_call_sync(target_addr_int, self.id[0], out_array_pointer, 
+                    rtv = lib._hpx_call_sync(target_addr_int, self.id[0], out_array_pointer, 
                         out_array_byte, len(c_args), *args)
             elif sync == 'async':
-                lib._hpx_call_async(target_addr.addr, self.id[0], lsync_addr, rsync_addr,
+                rtv = lib._hpx_call_async(target_addr.addr, self.id[0], lsync_addr, rsync_addr,
                         len(c_args), *args)
             elif isinstance(sync, str):
                 raise ValueError("sync argument not recognizable")
@@ -306,6 +307,9 @@ class BaseAction(metaclass=ABCMeta):
             pass
         else:
             raise TypeError("gate should be an instance of LCO")
+
+        if rtv != SUCCESS:
+            raise HPXError("action launch failed")
 
 
 class Action(BaseAction):
