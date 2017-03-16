@@ -132,7 +132,7 @@ class BaseAction(metaclass=ABCMeta):
                     target = target.unpin()
                 return rtv
             self._ffi_func = ffi.callback("int (void*, size_t)")(callback_func)
-            lib.hpx_register_action(action_type, lib.HPX_MARSHALLED, key, 
+            rtv = lib.hpx_register_action(action_type, lib.HPX_MARSHALLED, key, 
                                     self.id, 3, self._ffi_func, 
                                     Type.POINTER, Type.SIZE_T)
         elif marshalled == 'continuous':
@@ -142,7 +142,7 @@ class BaseAction(metaclass=ABCMeta):
                 rtv = python_func(array_arg)
                 return rtv
             self._ffi_func = ffi.callback("int (void*, size_t)")(callback_func)
-            lib.hpx_register_action(action_type, lib.HPX_MARSHALLED, key, self.id, 3, 
+            rtv = lib.hpx_register_action(action_type, lib.HPX_MARSHALLED, key, self.id, 3, 
                                     self._ffi_func, Type.POINTER, Type.SIZE_T)
         else:
             self._arguments_cdef = []
@@ -163,9 +163,12 @@ class BaseAction(metaclass=ABCMeta):
             else:
                 self._ffi_func = ffi.callback("int(" + ",".join(self._arguments_cdef) + ")")(python_func)
             
-            lib.hpx_register_action(action_type, lib.HPX_ATTR_NONE, key,
+            rtv = lib.hpx_register_action(action_type, lib.HPX_ATTR_NONE, key,
                                     self.id, len(argument_types) + 1, 
                                     self._ffi_func, *argument_types)
+
+        if rtv != SUCCESS:
+            raise HPXError("action registration error")
 
     # Helper function for generating C arguments for this action
     def _generate_c_arguments(self, *args):
