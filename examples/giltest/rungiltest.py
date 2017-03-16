@@ -9,8 +9,10 @@ def calculate(num):
 
 @hpx.create_action()
 def main(num_action):
+    and_lco = hpx.And(num_action)
     for i in range(num_action):
-        calculate(hpx.HERE(), 5040//num_action) # 5040 is lcm(2,3,4,5,6,7,8,9,10,12,14,15,16)
+        calculate(hpx.HERE(), 5040//num_action, rsync_lco=and_lco) # 5040 is lcm(2,3,4,5,6,7,8,9,10,12,14,15,16)
+    and_lco.wait()
     hpx.exit()
 
 if __name__ == '__main__':
