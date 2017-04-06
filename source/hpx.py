@@ -718,8 +718,27 @@ class GlobalAddressBlock:
         """
         self.addr.unpin()
 
+    def iscontinuous(self):
+        """ Test whether current memory block is countinous.
+        """
+        rtv = True
+        i = 0
+        while self.shape[i] == 1:
+            i += 1
+            if i == len(self.shape):
+                break
+        i += 1
+
+        while i < len(self.shape):
+            if self.shape[i] != self.strides[i-1]//self.strides[i]:
+                rtv = False
+                break
+            i += 1
+
+        return rtv
+
     def get(self, sync='lsync', lsync_lco=None):
-        """This copies data from a global address to a local buffer.
+        """ This copies data from a global address to a local buffer.
 
         This operation is not atomic. GlobalAddressBlock.get with concurrent 
         GlobalAddressBlock.set to overlapping addresses ranges will result in
@@ -731,10 +750,8 @@ class GlobalAddressBlock:
         """
 
         # get only works on continuous memory block
-        assert self.shape[0] != 1
-        for i in range(1, len(self.shape)):
-            if self.shape[i] != self.strides[i-1]//self.strides[i]:
-                raise RuntimeError("GlobalAddressBlock.get must be applied on a continuous block")
+        if not self.iscontinuous():
+            raise RuntimeError("GlobalAddressBlock.get must be applied on a continuous block")
 
         from_addr = self.addr + self.offsets[0]
         size = self.shape[0] * self.strides[0]
@@ -759,6 +776,45 @@ class GlobalAddressBlock:
         else:
             raise TypeError("'sync' argument needs to be of type str")
 
+    def set(self, from_array, sync='rsync', lsync_lco=None, rsync_lco=None):
+        """ This method copies data from a local buffer to the global memory block this object referenced.
+
+        Args:
+            from_array (numpy.ndarray): A numpy array whose content to be copied.
+            sync (string): This argument can be 'async', 'lsync', 'rsync'. When this argument is 'async' or 'lsync', 
+                optional LCOs can be supplied in argument `lsync_lco` or `rsync_lco`.
+            lsync_lco (LCO): An LCO object to be set when `from` can be reused or freed
+            rsync_lco (LCO): An LCO object to be set when the remote setting is completed.
+        """
+
+        # test the global address is continous
+        if not self.iscontinuous:
+            raise RuntimeError("GlobalAddressBlock.set must be applied on a continuous block")
+
+        # test `from` is countinous
+        if not from_array.flags['C_CONTIGUOUS']:
+            raise RuntimeError("from_array argument must be C contiguous")
+        from_addr = ffi.cast("void *", from_array.__array_interface__['data'][0])
+
+        i = 0
+        target_addr = self.addr + self.offsets[0]
+        while self.shape[i] == 1 and i < len(self.shape) - 1:
+            i += 1
+            target_addr += self.offsets[i]
+        size = self.shape[i] * self.strides[i]
+        target_addr_int = target_addr.addr
+
+        lsync_addr = _get_lco_addr(lsync_lco)
+        rsync_addr = _get_lco_addr(rsync_lco)
+
+        if sync == 'rsync':
+            lib.hpx_gas_memput_rsync(target_addr_int, from_addr, size)
+        elif sync == 'lsync':
+            lib.hpx_gas_memput_lsync(target_addr_int, from_addr, size, rsync_addr)
+        elif sync == 'async':
+            lib.hpx_gas_memput(target_addr_int, from_addr, size, lsync_addr, rsync_addr)
+        else:
+            ValueError("'sync' argument can only be 'rsync', 'lsync' or 'async'")
         
 # }}}
 

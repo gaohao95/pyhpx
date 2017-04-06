@@ -58,8 +58,8 @@ def main():
     sub_block = test_memory[1, :2, 1:]
     array = sub_block.try_pin()
     assert isinstance(array, np.ndarray)
-    array[0, 0] = 5
-    array[1, 1] = 10
+    array[0, 0] = 5 # test_memory[1, 0, 1] = 5
+    array[1, 1] = 10 # test_memory[1, 1, 2] = 10
     sub_block.unpin()
     array = test_memory[1].try_pin()
     assert array[0, 1] == 5
@@ -71,6 +71,13 @@ def main():
     assert array[0, 1] == 5
     assert array[1, 2] == 10
     # array = sub_block.get(sync='lsync')
+
+    # test set
+    from_array = np.array([6,11])
+    test_memory[2,0,2:4].set(from_array, sync='rsync') # test_memory[2,0,2:4] = [6,11]
+    array = test_memory[2].try_pin()
+    assert array[0, 2] == 6
+    assert array[0, 3] == 11
 
     # test free
     test_memory[1:].free_sync()
