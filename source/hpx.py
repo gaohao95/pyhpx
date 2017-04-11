@@ -7,6 +7,7 @@ from abc import ABCMeta, abstractmethod
 from collections import deque
 import pickle
 import logging
+import copy
 
 # {{{ Define HPX status
 
@@ -507,8 +508,7 @@ class GlobalAddress:
 
         Args:
             addr (int): The address in global memory space
-            bsize (int): The block size used when allocating memory associated 
-                with `addr`.
+            bsize (int): The block size used when allocating memory associated with `addr`.
         """
         self.addr = addr
         self.bsize = bsize
@@ -628,7 +628,7 @@ def HERE():
 
 # {{{ GlobalAddressBlock
 
-def _currentdim_is_slice(sliceObj, dimLimit, dimStride, dimOffset):
+def _currentdim_is_slice(sliceObj, dimLimit):
     if sliceObj.start == None:
         start = 0
     else:
@@ -637,81 +637,71 @@ def _currentdim_is_slice(sliceObj, dimLimit, dimStride, dimOffset):
         stop = dimLimit
     else:
         stop = sliceObj.stop
-    return stop - start, dimOffset + start * dimStride
+    return start, stop
 
 class GlobalAddressBlock:
-    def __init__(self, addr, shape, dtype, strides, offsets):
-        """Constructor of AddrBlock class
+    def __init__(self, addr, shape, dtype, strides):
+        """Constructor of a GlobalAddressBlock object
 
         Args:
-            addr (GlobalAddr): The starting address of this block is given by 
-                self.addr + self.offsets[0]. self.addr will not change for 
-                indexing.
-            dtype (numpy.dtype): The type of each object in address block
+            addr (GlobalAddr): The starting address of this block.
+            dtype (numpy.dtype): The type of each object in address block.
         """
         self.addr = addr
         self.shape = shape
         self.dtype = dtype
         self.strides = strides
-        self.offsets = offsets
     
     def __getitem__(self, key):
-        if type(key) is int or type(key) is slice:
+
+        # convert key (maybe int, slice or tuple) to tuple
+        if isinstance(key, int) or isinstance(key, slice):
             keyWrap = (key,)
-        elif type(key) is tuple:
+        elif isinstance(key, tuple):
             keyWrap = key
         else:
             raise TypeError("Invalid key type")
         
-        newShape = list(self.shape)
-        newOffsets = list(self.offsets)
+        newAddr = copy.copy(self.addr)
+        newShape = []
+        newStrides = []
+
         for i in range(len(keyWrap)):
             if isinstance(keyWrap[i], int):
-                newShape[i] = 1
-                newOffsets[i] = self.offsets[i] + keyWrap[i]*self.strides[i]
+                newAddr += keyWrap[i]*self.strides[i]
             elif isinstance(keyWrap[i], slice):
-                currentLength, currentOffset = _currentdim_is_slice(
-                        keyWrap[i], self.shape[i], self.strides[i], 
-                        self.offsets[i])
-                newShape[i] = currentLength
-                newOffsets[i] = currentOffset
+                start, stop = _currentdim_is_slice(keyWrap[i], self.shape[i])
+                newAddr += start*self.strides[i]
+                newShape.append(stop - start)
+                newStrides.append(self.strides[i])
             else:
                 raise TypeError("Invalid key type in dimension " + str(i))
 
         newShape = tuple(newShape)
-        newOffsets = tuple(newOffsets)
-        
-        return GlobalAddressBlock(self.addr, newShape, self.dtype, 
-                self.strides, newOffsets)  
+        newStrides = tuple(newStrides)
 
-    def try_pin(self, return_local=True):
+        # if the indexing does not cover all dimension, fill in the remaining dimensions
+        newShape += self.shape[len(keyWrap):]
+        newStrides += self.strides[len(keyWrap):]
+        
+        return GlobalAddressBlock(newAddr, newShape, self.dtype, newStrides)  
+
+    def try_pin(self):
         """ Performs address translation. See `Addr.try_pin` for detail.
+
+        This method can only be used if this object represents a contiguous memory area.
 
         Returns:
             A numpy array representing this address block.
         """
-        if return_local == True:
-            addrLocal = self.addr.try_pin(True)
-            size = self.offsets[0] + self.strides[0] * self.shape[0]
-            array = np.frombuffer(ffi.buffer(addrLocal, size), dtype=self.dtype)
-            
-            # reshape the array
-            bigShape = [self.offsets[0] // self.strides[0] + self.shape[0]]
-            for i in range(len(self.shape) - 1):
-                bigShape.append(self.strides[i] // self.strides[i+1])
-            bigShape = tuple(bigShape)
-            array = array.reshape(bigShape)
+        # test contiguous
+        if not self.iscontinuous():
+            raise RuntimeError("GlobalAddressBlock.try_pin only works on contiguous memory")
 
-            indexing = []
-            for i in range(len(self.shape)):
-                start = self.offsets[i] // self.strides[i]
-                stop = start + self.shape[i]
-                indexing.append(slice(start, stop, None))
-            indexing = tuple(indexing)
-            
-            return array[indexing]
-        else:
-            self.addr.try_pin(False)
+        addrLocal = self.addr.try_pin(True)
+        size = _calculate_block_size(self.shape)*self.dtype.itemsize
+        array = np.frombuffer(ffi.buffer(addrLocal, size), dtype=self.dtype)
+        return array.reshape(self.shape)
 
     def unpin(self):
         """ Unpin this address block.
@@ -720,24 +710,30 @@ class GlobalAddressBlock:
 
     def iscontinuous(self):
         """ Test whether current memory block is countinous.
+
+        This method is used by get, set and try_pin for checking.
         """
-        rtv = True
+        # discard first few dimensions where the size is 1
         i = 0
         while self.shape[i] == 1:
             i += 1
             if i == len(self.shape):
                 break
-        i += 1
 
+        # at here, i is the first dimension not having size 1
+        i += 1
         while i < len(self.shape):
             if self.shape[i] != self.strides[i-1]//self.strides[i]:
-                rtv = False
-                break
+                return False
             i += 1
 
-        return rtv
+        # test last dimension has strides of itemsize
+        if self.strides[-1] != self.dtype.itemsize:
+            return False
+        
+        return True
 
-    def get(self, sync='lsync', lsync_lco=None):
+    def get(self, sync='sync', lsync_lco=None):
         """ This copies data from a global address to a local buffer.
 
         This operation is not atomic. GlobalAddressBlock.get with concurrent 
@@ -746,35 +742,29 @@ class GlobalAddressBlock:
         some out-of-band mechanism.
 
         Args:
-            sync (string): can be 'lsync' or 'async'
+            sync (string): can be 'sync' or 'async'
         """
 
         # get only works on continuous memory block
         if not self.iscontinuous():
             raise RuntimeError("GlobalAddressBlock.get must be applied on a continuous block")
 
-        from_addr = self.addr + self.offsets[0]
-        size = self.shape[0] * self.strides[0]
-        array = np.zeros((size//self.dtype.itemsize,), dtype=self.dtype)
-        arrayshape = [self.shape[0]]
-        for i in range(len(self.shape) - 1):
-            arrayshape.append(self.strides[i] // self.strides[i+1])
-        array = array.reshape(tuple(arrayshape))
+        i = 0
+        while self.shape[i] == 1 and i < len(self.shape) - 1:
+            i += 1
+        size = self.shape[i]*self.strides[i]
 
-        if sync == 'lsync':
+        array = np.zeros((size//self.dtype.itemsize,), dtype=self.dtype).reshape(self.shape)
+
+        if sync == 'sync':
             lib.hpx_gas_memget_sync(ffi.cast("void *", array.__array_interface__['data'][0]), 
-                                    from_addr.addr, size)
-            start = self.offsets[0] // self.strides[0]
-            stop = start + self.shape[i]
-            return array[slice(start, stop)]
+                                    self.addr.addr, size)
+            return array
         elif sync == 'async':
             # TODO: How??
             pass
-        elif isinstance(sync, str):
-            raise ValueError("'sync' argument needs to be either 'lsync' or "
-                             "'rsync'")
         else:
-            raise TypeError("'sync' argument needs to be of type str")
+            raise ValueError("'sync' argument needs to be either 'sync' or 'async'")
 
     def set(self, from_array, sync='rsync', lsync_lco=None, rsync_lco=None):
         """ This method copies data from a local buffer to the global memory block this object referenced.
@@ -788,8 +778,8 @@ class GlobalAddressBlock:
         """
 
         # test the global address is continous
-        if not self.iscontinuous:
-            raise RuntimeError("GlobalAddressBlock.set must be applied on a continuous block")
+        if not self.iscontinuous():
+            raise RuntimeError("GlobalAddressBlock.set must be applied on a contiguous block")
 
         # test `from` is countinous
         if not from_array.flags['C_CONTIGUOUS']:
@@ -797,22 +787,19 @@ class GlobalAddressBlock:
         from_addr = ffi.cast("void *", from_array.__array_interface__['data'][0])
 
         i = 0
-        target_addr = self.addr + self.offsets[0]
         while self.shape[i] == 1 and i < len(self.shape) - 1:
             i += 1
-            target_addr += self.offsets[i]
         size = self.shape[i] * self.strides[i]
-        target_addr_int = target_addr.addr
 
         lsync_addr = _get_lco_addr(lsync_lco)
         rsync_addr = _get_lco_addr(rsync_lco)
 
         if sync == 'rsync':
-            lib.hpx_gas_memput_rsync(target_addr_int, from_addr, size)
+            lib.hpx_gas_memput_rsync(self.addr.addr, from_addr, size)
         elif sync == 'lsync':
-            lib.hpx_gas_memput_lsync(target_addr_int, from_addr, size, rsync_addr)
+            lib.hpx_gas_memput_lsync(self.addr.addr, from_addr, size, rsync_addr)
         elif sync == 'async':
-            lib.hpx_gas_memput(target_addr_int, from_addr, size, lsync_addr, rsync_addr)
+            lib.hpx_gas_memput(self.addr.addr, from_addr, size, lsync_addr, rsync_addr)
         else:
             ValueError("'sync' argument can only be 'rsync', 'lsync' or 'async'")
         
@@ -820,36 +807,44 @@ class GlobalAddressBlock:
 
 # {{{ GlobalMemory
 
-def _calculate_block_size(blockShape, dtype):
-    """ Helper function for calculating block size for GAS allocation functions.
+def _calculate_block_size(shape):
+    """ Helper function for calculating block size (not memory size) for GAS allocation functions.
     """
     total_size = 1
-    for dim in blockShape:
+    for dim in shape:
         total_size *= dim
-    return total_size * dtype.itemsize
+    return total_size
 
 class GlobalMemory:
 
-    def __init__(self, addr, numBlock, blockShape, dtype, strides, offsets):
-        """
+    def __init__(self, addr, numBlock, blockShape, dtype, strides):
+        """ Constructor for a GlobalMemory object. 
+
+        This is supposed to be used internally. User should refer to one of the class methods for allocating global
+        memory.
+
         Args:
-            addr (GlobalAddress): A GlobalAddress object representing the 
-                beginning of the allocated memory. Indexing should not change 
-                this value.
-            strides (tuple): Memory increment for each dimension. This should
-                not change after the initial allocation.
-            offset (tuple): Memory offset for each dimension. 
+            addr (GlobalAddress): A GlobalAddress object representing the beginning of GAS memory this object 
+                represented.
+            numBlock (tuple): The number of blocks.
+            blockShape (tuple): The shape of each block.
+            strides (tuple): Memory increment for each dimension. This should not change after the initial allocation.
         """
         self.addr = addr
-        self.shape = (numBlock,) + blockShape 
+        self.numBlock = numBlock
+        self.blockShape = blockShape
         self.dtype = dtype
         self.strides = strides
-        self.offsets = offsets
         
-    def _calculate_strides(blockShape, dtype):
+    def _calculate_strides(shape, dtype):
+        """ This is used internally for GAS allocation implementation.
+
+        Args:
+            shape (tuple): This is the concatenation of numBlock and blockShape
+        """
         strides = deque([dtype.itemsize])
-        for i in range(len(blockShape)-1, -1, -1):
-            strides.appendleft(strides[0] * blockShape[i])
+        for i in range(len(shape)-1, 0, -1):
+            strides.appendleft(strides[0] * shape[i])
         return tuple(strides)
 
     @classmethod
@@ -857,29 +852,39 @@ class GlobalMemory:
         """Allocate cyclically distributed global memory.
         
         Args:
-            numBlock (int): The number of blocks to allocate.
-            blockShape (tuple): The shape of each block.
+            numBlock (tuple, int): The number of blocks to allocate.
+            blockShape (tuple, int): The shape of each block.
             dtype (numpy.dtype): The data type of each entry in the block.
             boundary (int): The alignment.
 
         Returns:
             A GlobalMemory object representing the allocated memory.
         """
-        block_size = _calculate_block_size(blockShape, dtype)
-        addr = lib.hpx_gas_alloc_cyclic(numBlock, block_size, boundary)
-        strides = GlobalMemory._calculate_strides(blockShape, dtype)
-        return cls(GlobalAddress(addr, block_size), numBlock, blockShape, 
-            dtype, strides, (0,)*(len(blockShape) + 1))
+        if isinstance(numBlock, int):
+            numBlock = (numBlock,)
+        if isinstance(blockShape, int):
+            blockShape = (blockShape,)
+
+        block_size = _calculate_block_size(blockShape) * dtype.itemsize
+        block_num = _calculate_block_size(numBlock)
+        addr = lib.hpx_gas_alloc_cyclic(block_num, block_size, boundary)
+        strides = GlobalMemory._calculate_strides(numBlock + blockShape, dtype)
+        return cls(GlobalAddress(addr, block_size), numBlock, blockShape, dtype, strides)
 
     @classmethod
     def calloc_cyclic(cls, numBlock, blockShape, dtype, boundary=0):
         """Allocate cyclically distributed global zeroed memory.
         """
-        block_size = _calculate_block_size(blockShape, dtype)
-        addr = lib.hpx_gas_calloc_cyclic(numBlock, block_size, boundary)
-        strides = GlobalMemory._calculate_strides(blockShape, dtype)
-        return cls(GlobalAddress(addr, block_size), numBlock, blockShape, 
-            dtype, strides, (0,)*(len(blockShape) + 1))
+        if isinstance(numBlock, int):
+            numBlock = (numBlock,)
+        if isinstance(blockShape, int):
+            blockShape = (blockShape,)
+
+        block_size = _calculate_block_size(blockShape) * dtype.itemsize
+        block_num = _calculate_block_size(numBlock)
+        addr = lib.hpx_gas_calloc_cyclic(block_num, block_size, boundary)
+        strides = GlobalMemory._calculate_strides(numBlock + blockShape, dtype)
+        return cls(GlobalAddress(addr, block_size), numBlock, blockShape, dtype, strides)
 
     @classmethod
     def alloc_local_at(cls, numBlock, blockShape, dtype, loc, boundary=0, sync='sync', 
@@ -898,11 +903,17 @@ class GlobalMemory:
             sync (string): this argument can be either 'sync' or 'async'. If this argument is 
                 'async', an optional argument `lco` can be provided for synchronization.
         """
-        block_size = _calculate_block_size(blockShape, dtype)
-        strides = GlobalMemory._calculate_strides(blockShape, dtype)
+        if isinstance(numBlock, int):
+            numBlock = (numBlock,)
+        if isinstance(blockShape, int):
+            blockShape = (blockShape,)
+
+        block_size = _calculate_block_size(blockShape) * dtype.itemsize
+        strides = GlobalMemory._calculate_strides(numBlock + blockShape, dtype)
+        block_num = _calculate_block_size(numBlock)
 
         if sync == 'sync':
-            addr = lib.hpx_gas_alloc_local_at_sync(numBlock, block_size, boundary, loc.addr)
+            addr = lib.hpx_gas_alloc_local_at_sync(block_num, block_size, boundary, loc.addr)
         elif sync == 'async':
             if isinstance(lco, LCO):
                 lco_addr = lco.addr
@@ -911,13 +922,11 @@ class GlobalMemory:
             else:
                 raise RuntimeError("Unrecognizable argument 'lco'")
 
-            addr = lib.hpx_gas_alloc_local_at_async(numBlock, block_size, boundary, loc.addr, 
-                lco_addr)
+            addr = lib.hpx_gas_alloc_local_at_async(block_num, block_size, boundary, loc.addr, lco_addr)
         else:
             raise RuntimeError("Unrecognizable argument 'sync'")
 
-        return cls(GlobalAddress(addr, block_size), numBlock, blockShape, 
-            dtype, strides, (0,)*(len(blockShape) + 1))
+        return cls(GlobalAddress(addr, block_size), numBlock, blockShape, dtype, strides)
 
     def free(self, lco):
         """Free the global allocation associated with this object.
@@ -931,57 +940,62 @@ class GlobalMemory:
     def free_sync(self):
         lib.hpx_gas_free_sync(self.addr.addr)
 
-    def _check_index(self, index):
-        if index >= self.numBlock:
-            raise IndexError("Invalid index")
-
     def __getitem__(self, key):
-        if type(key) is tuple:
-            if len(key) == 0:
-                return self
-            if type(key[0]) is int:
-                return GlobalAddressBlock(
-                        self.addr + self.offsets[0] + key[0] * self.strides[0],
-                        self.shape[1:], self.dtype, self.strides[1:], 
-                        self.offsets[1:])[key[1:]]
-            elif type(key[0]) is slice:
-                newShape = list(self.shape)
-                newOffsets = list(self.offsets)
-                for i in range(len(key)):
-                    if type(key[i]) is slice:
-                        newDimLength, newDimOffset = _currentdim_is_slice(
-                                key[i], self.shape[i], self.strides[i], 
-                                self.offsets[i])
-                        newShape[i] = newDimLength
-                        newOffsets[i] = newDimOffset
-                    elif type(key[i]) is int:
-                        newShape[i] = 1
-                        newOffsets[i] = self.offsets[i] + key[i] * self.strides[i]
-                    else:
-                        raise TypeError("Invalid key type on dimension {0}.".format(i)) 
-                newShape = tuple(newShape)
-                newOffsets = tuple(newOffsets)
-                return GlobalMemory(self.addr, newShape[0], newShape[1:], 
-                    self.dtype, self.strides, newOffsets)
-            else:
-                raise TypeError("Invalid key type")
-        elif type(key) is slice:
-            newNumBlock, newFirstDimOffset = _currentdim_is_slice(
-                    key, self.shape[0], self.strides[0], self.offsets[0])
-            newOffsets = list(self.offsets)
-            newOffsets[0] = newFirstDimOffset
-            newOffsets = tuple(newOffsets)
-            return GlobalMemory(self.addr, newNumBlock, self.shape[1:], 
-                self.dtype, self.strides, newOffsets)
-        elif type(key) is int:
-            return GlobalAddressBlock(
-                    self.addr + self.offsets[0] + key * self.strides[0],
-                    self.shape[1:], self.dtype, self.strides[1:],
-                    self.offsets[1:])
-        elif key == None:
-            return self
+
+        block_dims = len(self.numBlock)
+        dims = self.numBlock + self.blockShape
+
+        # convert key (maybe tuple or int) to tuple
+        if isinstance(key, slice) or isinstance(key, int):
+            keyWrap = (key,)
+        elif isinstance(key, tuple):
+            keyWrap = key
         else:
-            raise TypeError("Invalid key type")
+            raise TypeError("invalid key type for indexing")
+
+        newNumBlock = []
+        newBlockShape = []
+        newStrides = []
+        newAddr = copy.copy(self.addr)
+
+        for i in range(len(keyWrap)):
+            if i >= len(self.strides):
+                raise RuntimeError("Too many dimensions in indexing")
+
+            if isinstance(keyWrap[i], int):
+                newAddr += keyWrap[i]*self.strides[i]
+            elif isinstance(keyWrap[i], slice):
+                start, stop = _currentdim_is_slice(keyWrap[i], dims[i])
+                newAddr += start*self.strides[i]
+                newStrides.append(self.strides[i])
+                if i < block_dims:
+                    newNumBlock.append(stop - start)
+                else:
+                    newBlockShape.append(stop - start)
+            else:
+                raise TypeError("invalid key type for indexing")
+
+        newNumBlock = tuple(newNumBlock)
+        newBlockShape = tuple(newBlockShape)
+        newStrides = tuple(newStrides)
+
+        # if the indexing does not cover all dimension, fill in the remaining dimensions
+        if len(keyWrap) < len(self.numBlock):
+            newNumBlock += self.numBlock[len(keyWrap):]
+            newBlockShape = self.blockShape
+        else:
+            newBlockShape += self.blockShape[len(keyWrap)-len(self.numBlock):]
+        newStrides += self.strides[len(keyWrap):]
+
+        # if all index are integer, then the shape should be (1,)
+        if len(newBlockShape) == 0:
+            newBlockShape = (1,)
+
+        if len(newNumBlock) > 0:
+            return GlobalMemory(newAddr, newNumBlock, newBlockShape, self.dtype, newStrides)
+        else:
+            return GlobalAddressBlock(newAddr, newBlockShape, self.dtype, newStrides)
+
 
 # }}}
 
@@ -1021,7 +1035,7 @@ class LCO(metaclass=ABCMeta):
         self.shape = shape
         self.dtype = dtype
         if shape is not None:
-            self.size = _calculate_block_size(shape, dtype)
+            self.size = _calculate_block_size(shape) * dtype.itemsize
         else:
             self.size = 0
 
@@ -1105,7 +1119,7 @@ class Future(LCO):
         If shape is None, this Future LCO does not has the associated buffer.
         """
         if shape is not None:
-            size = _calculate_block_size(shape, dtype)
+            size = _calculate_block_size(shape) * dtype.itemsize
         else:
             size = 0
         addr = lib.hpx_lco_future_new(size)
@@ -1193,7 +1207,7 @@ class Reduce(LCO):
             id_action (Function)
             op_action (Function)
         """
-        size = _calculate_block_size(shape, dtype)
+        size = _calculate_block_size(shape) * dtype.itemsize
         addr = lib.hpx_lco_reduce_new(inputs, size, id_action.id[0], op_action.id[0])
         super(Reduce, self).__init__(addr, shape, dtype) 
 # }}}
