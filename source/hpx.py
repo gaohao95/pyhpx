@@ -668,9 +668,13 @@ class GlobalAddressBlock:
 
         for i in range(len(keyWrap)):
             if isinstance(keyWrap[i], int):
+                if keyWrap[i] >= self.shape[i] or keyWrap[i] < 0:
+                    raise RuntimeError("GlobalAddressBlock object index out of bound")
                 newAddr += keyWrap[i]*self.strides[i]
             elif isinstance(keyWrap[i], slice):
                 start, stop = _currentdim_is_slice(keyWrap[i], self.shape[i])
+                if start >= self.shape[i] or start < 0 or stop > self.shape[i] or stop < 0:
+                    raise RuntimeError("GlobalAddressBlock object index out of bound")
                 newAddr += start*self.strides[i]
                 newShape.append(stop - start)
                 newStrides.append(self.strides[i])
@@ -963,9 +967,13 @@ class GlobalMemory:
                 raise RuntimeError("Too many dimensions in indexing")
 
             if isinstance(keyWrap[i], int):
+                if keyWrap[i] >= dims[i] or keyWrap[i] < 0:
+                    raise RuntimeError("GlobalMemory object index out of bound")
                 newAddr += keyWrap[i]*self.strides[i]
             elif isinstance(keyWrap[i], slice):
                 start, stop = _currentdim_is_slice(keyWrap[i], dims[i])
+                if start >= dims[i] or start < 0 or stop > dims[i] or stop < 0:
+                    raise RuntimeError("GlobalMemory object index out of bound")
                 newAddr += start*self.strides[i]
                 newStrides.append(self.strides[i])
                 if i < block_dims:

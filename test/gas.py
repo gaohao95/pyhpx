@@ -51,6 +51,27 @@ def main():
     assert sub_memory[1:].addr.addr == test_memory.addr.addr + 20*itemsize + 5*itemsize
     assert sub_memory[1:].shape == (3, 5)
 
+    try:
+        test_memory[3]
+    except RuntimeError:
+        pass
+    else:
+        raise RuntimeError("Runtime error not raised!")
+
+    try:
+        sub_memory[4]
+    except RuntimeError:
+        pass
+    else:
+        raise RuntimeError("Runtime error not raised!")
+
+    try:
+        sub_memory[2:5]
+    except RuntimeError:
+        pass
+    else:
+        raise RuntimeError("Runtime error not raised!")
+
     # test try_pin and unpin
     sub_block = test_memory[1, :2]
     array = sub_block.try_pin()
