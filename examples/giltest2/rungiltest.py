@@ -4,12 +4,12 @@ import sys
 
 @hpx.create_action()
 def calculate(num):
-    giltest.calculate(num)
+    for i in range(num):
+        giltest.calculate()
     return hpx.SUCCESS
 
 @hpx.create_action()
 def main(num_action):
-
     start = hpx.time_now()
 
     and_lco = hpx.And(num_action)

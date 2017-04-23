@@ -1233,16 +1233,29 @@ def set_loglevel(loglevel: str):
 # {{{ Topology
 
 def get_my_rank():
-    return lib.hpx_get_my_rank();
+    return lib.hpx_get_my_rank()
 
 def get_num_ranks():
-    return lib.hpx_get_num_ranks();
+    return lib.hpx_get_num_ranks()
 
 def get_num_threads():
-    return lib.hpx_get_num_threads();
+    return lib.hpx_get_num_threads()
 
 def get_my_thread_id():
-    return lib.hpx_get_my_thread_id();
+    return lib.hpx_get_my_thread_id()
+
+# }}}
+
+# {{{ Time
+
+def time_now():
+    return lib.hpx_time_now()
+
+def time_from_start_ns(t):
+    return lib.hpx_time_from_start_ns(t)
+
+def time_elapsed_ms(from_time):
+    return lib.hpx_time_elapsed_ms(from_time)
 
 # }}}
 
@@ -1254,3 +1267,4 @@ def HPXError(Exception):
     pass
 
 # }}}
+

@@ -213,6 +213,25 @@ int _hpx_call_cc(hpx_addr_t addr, hpx_action_t action, int n, ...);
 
 /* End rpc.h */
 
+/* Begin time.h */
+
+typedef struct { ...; } hpx_time_t;
+hpx_time_t hpx_time_now(void);
+uint64_t hpx_time_from_start_ns(hpx_time_t t);
+double hpx_time_ns(hpx_time_t from);
+double hpx_time_us(hpx_time_t from);
+double hpx_time_ms(hpx_time_t from);
+double hpx_time_diff_us(hpx_time_t from, hpx_time_t to);
+double hpx_time_diff_ms(hpx_time_t from, hpx_time_t to);
+int64_t hpx_time_diff_ns(hpx_time_t from, hpx_time_t to);
+void hpx_time_diff(hpx_time_t start, hpx_time_t end, hpx_time_t *diff);
+double hpx_time_elapsed_us(hpx_time_t from);
+double hpx_time_elapsed_ms(hpx_time_t from);
+uint64_t hpx_time_elapsed_ns(hpx_time_t from);
+void hpx_time_elapsed(hpx_time_t from, hpx_time_t *diff);
+
+/* End time.h */
+
 """)
 
 compile_include_dirs.append('contrib')
