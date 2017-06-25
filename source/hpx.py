@@ -647,6 +647,7 @@ class DummyArray:
         self.__array_interface__['strides'] = strides
         self.__array_interface__['shape'] = shape
         self.__array_interface__['typestr'] = dtype.str
+        self.__array_interface__['descr'] = dtype.descr
 
 class GlobalAddressBlock:
     def __init__(self, addr, shape, dtype, strides):
