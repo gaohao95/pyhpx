@@ -562,7 +562,7 @@ class GlobalAddress:
                 memory correspondence.
 
         Returns:
-            Local memory which corresponds to the given global memory if 
+            Local memory (int object) which corresponds to the given global memory if 
             successful and `return_local` is true.
         """
         if return_local == True:
@@ -571,7 +571,7 @@ class GlobalAddress:
             if rtv == False:
                 raise HPXError("Pinning the global memory fails")
             else:
-                return local[0]
+                return int(ffi.cast("uintptr_t", local[0]))
         else:
             rtv = lib.hpx_gas_try_pin(self._addr, ffi.NULL)
             if rtv == False:
@@ -639,6 +639,15 @@ def _currentdim_is_slice(sliceObj, dimLimit):
         stop = sliceObj.stop
     return start, stop
 
+class DummyArray:
+    # This class is used for constructing new arrays in GlobalAddressBlock.try_pin
+    def __init__(self, data, strides, shape, dtype):
+        self.__array_interface__ = {}
+        self.__array_interface__['data'] = (data, False)
+        self.__array_interface__['strides'] = strides
+        self.__array_interface__['shape'] = shape
+        self.__array_interface__['typestr'] = dtype.str
+
 class GlobalAddressBlock:
     def __init__(self, addr, shape, dtype, strides):
         """Constructor of a GlobalAddressBlock object
@@ -693,19 +702,12 @@ class GlobalAddressBlock:
     def try_pin(self):
         """ Performs address translation. See `Addr.try_pin` for detail.
 
-        This method can only be used if this object represents a contiguous memory area.
-
         Returns:
             A numpy array representing this address block.
         """
-        # test contiguous
-        if not self.iscontinuous():
-            raise RuntimeError("GlobalAddressBlock.try_pin only works on contiguous memory")
-
         addrLocal = self.addr.try_pin(True)
-        size = _calculate_block_size(self.shape)*self.dtype.itemsize
-        array = np.frombuffer(ffi.buffer(addrLocal, size), dtype=self.dtype)
-        return array.reshape(self.shape)
+        dummy_array = DummyArray(addrLocal, self.strides, self.shape, self.dtype)
+        return np.array(dummy_array, copy=False, dtype=self.dtype)
 
     def unpin(self):
         """ Unpin this address block.

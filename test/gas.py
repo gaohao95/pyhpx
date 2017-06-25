@@ -83,6 +83,9 @@ def main():
     assert array[0, 0] == 5
     assert array[1, 1] == 10
     test_memory[1].unpin()
+    sub_block = test_memory[1, :3, 1:]
+    array = sub_block.try_pin()
+    assert array[1, 0] == 10
 
     # test get
     array = test_memory[1].get(sync='sync')
