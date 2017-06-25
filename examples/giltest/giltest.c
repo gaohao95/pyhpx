@@ -10,7 +10,6 @@ static PyObject* giltest_calculate(PyObject *self, PyObject *args)
     int sum = 0;
     for(long i = 0; i < num; i++)
         for(int j = 0; j < 1000; j++)
-            for(int k = 0; k < 1000; k++)
                 sum = (sum + 1) % 10000;
     Py_END_ALLOW_THREADS
 
