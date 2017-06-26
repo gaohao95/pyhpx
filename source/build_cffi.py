@@ -158,6 +158,7 @@ int _hpx_process_broadcast_rsync(hpx_pid_t pid, hpx_action_t action, int nargs, 
 /* Begin thread.h */
 
 hpx_pid_t hpx_thread_current_pid(void);
+int _hpx_thread_continue(int n, ...);
 
 /* End thread.h */
 

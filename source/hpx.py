@@ -1223,6 +1223,28 @@ class Reduce(LCO):
         super(Reduce, self).__init__(addr, shape, dtype) 
 # }}}
 
+# {{{ Threads
+
+def thread_continue(type, *args):
+    """ Initiate the current thread's continuation.
+
+    Args:
+        type (string): 'marshalled', 'array' 
+    """
+    # Note: Continuation currently does not support non-marshalled action
+    if type == 'marshalled':
+        pointer, size = _parse_marshalled_args(args)
+    elif type == 'array':
+        pointer = ffi.cast("void *", args[0].__array_interface__['data'][0])
+        size = ffi.cast("size_t", args[0].nbytes)
+    else:
+        raise RuntimeError("unrecognized type argument for thread_continue")
+
+    if lib._hpx_thread_continue(2, pointer, size) != SUCCESS:
+        raise HPXError("Errors occurred when launching continuation")
+
+# }}}
+
 # {{{ Logging
 
 def set_loglevel(loglevel: str):
