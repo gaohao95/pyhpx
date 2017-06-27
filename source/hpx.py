@@ -1052,15 +1052,19 @@ class LCO(metaclass=ABCMeta):
         else:
             self.size = 0
 
-    def delete(self, rsync):
+    def delete(self, sync='sync', sync_lco=None):
         """
         Args:
-            rsync (LCO): An LCO to signal remote completion.
+            sync (string): can be 'async' or 'sync'
+            sync_lco (LCO): An LCO to signal remote completion.
         """
-        lib.hpx_lco_delete(self.addr, rsync.addr)
-
-    def delete_sync(self):
-        lib.hpx_lco_delete_sync(self.addr)
+        if sync == 'sync':
+            lib.hpx_lco_delete_sync(self.addr)
+        elif sync == 'async':
+            lco_addr = _get_lco_addr(sync_lco)
+            lib.hpx_lco_delete(self.addr, lco_addr)
+        else:
+            raise ValueError("Unrecognized 'sync' argument for hpx.LCO.delete")
     
 
     def set(self, array=None, sync='rsync', lsync_lco=None, rsync_lco=None):
