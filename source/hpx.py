@@ -187,7 +187,7 @@ class BaseAction(metaclass=ABCMeta):
         """ Launch an Action.
 
         Args:
-            target_addr (Union[hpx.GlobalAddressBlock, hpx.GlobalAddress]): Specify the 
+            target_addr (Union[hpx.GlobalAddressBlock, hpx.GlobalAddress, int]): Specify the 
                 location where this action is launched. If this action is a pinned 
                 action, this argument must be a GlobalAddressBlock object. Otherwise, 
                 this argument can be either GlobalAddressBlock or GlobalAddress. You can 
@@ -276,8 +276,10 @@ class BaseAction(metaclass=ABCMeta):
             target_addr_int = target_addr.addr.addr
         elif isinstance(target_addr, GlobalAddress):
             target_addr_int = target_addr.addr
+        elif isinstance(target_addr, int):
+            target_addr_int = target_addr
         else:
-            raise TypeError("target_addr must be either GlobalAddressBlock or GlobalAddress")
+            raise TypeError("target_addr must be GlobalAddressBlock, GlobalAddress or int")
 
         if gate is None:
             if sync == 'lsync':
