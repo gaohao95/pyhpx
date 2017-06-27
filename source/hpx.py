@@ -906,7 +906,7 @@ class GlobalMemory:
         runtime.
         
         Args:
-            loc (GlobalAddress): The address which the allocation targets.
+            loc (GlobalAddress or int): The address which the allocation targets.
             sync (string): this argument can be either 'sync' or 'async'. If this argument is 
                 'async', an optional argument `lco` can be provided for synchronization.
         """
@@ -914,13 +914,15 @@ class GlobalMemory:
             numBlock = (numBlock,)
         if isinstance(blockShape, int):
             blockShape = (blockShape,)
+        if isinstance(loc, GlobalAddress):
+            loc_addr = loc.addr
 
         block_size = _calculate_block_size(blockShape) * dtype.itemsize
         strides = GlobalMemory._calculate_strides(numBlock + blockShape, dtype)
         block_num = _calculate_block_size(numBlock)
 
         if sync == 'sync':
-            addr = lib.hpx_gas_alloc_local_at_sync(block_num, block_size, boundary, loc.addr)
+            addr = lib.hpx_gas_alloc_local_at_sync(block_num, block_size, boundary, loc_addr)
         elif sync == 'async':
             if isinstance(lco, LCO):
                 lco_addr = lco.addr
@@ -929,7 +931,7 @@ class GlobalMemory:
             else:
                 raise RuntimeError("Unrecognizable argument 'lco'")
 
-            addr = lib.hpx_gas_alloc_local_at_async(block_num, block_size, boundary, loc.addr, lco_addr)
+            addr = lib.hpx_gas_alloc_local_at_async(block_num, block_size, boundary, loc_addr, lco_addr)
         else:
             raise RuntimeError("Unrecognizable argument 'sync'")
 
