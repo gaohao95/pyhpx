@@ -172,7 +172,7 @@ class BaseAction(metaclass=ABCMeta):
             raise HPXError("action registration error")
 
     # Helper function for generating C arguments for this action
-    def _generate_c_arguments(self, *args):
+    def _generate_c_arguments(self, args):
         c_args = []
         for i in range(len(self._arguments_cdef)):
             c_type = self._arguments_cdef[i] + ' *'
@@ -181,6 +181,37 @@ class BaseAction(metaclass=ABCMeta):
             else:
                 c_args.append(ffi.new(c_type, args[i]))
         return c_args
+
+    # Helper function for generating marshalled arguments
+    def _generate_marshalled_arguments(self, args):
+        if self.pinned:
+            if not isinstance(target_addr, GlobalAddressBlock):
+                raise TypeError("target_addr is not GlobalAddressBlock object") 
+            expandargs = list(args)
+            expandargs.insert(0, target_addr)
+            args = tuple(expandargs)
+        pointer, size = _parse_marshalled_args(args)
+        return pointer, size
+
+    # Helper function for generating array arguments
+    def _generate_array_arguments(self, *args):
+        if self.pinned:
+            raise RuntimeError("Pinned action is not supported for array argument")
+        pointer = ffi.cast("void *", args[0].__array_interface__['data'][0])
+        size = ffi.cast("size_t", args[0].nbytes)
+        return pointer, size
+
+    # Helper function for getting target address of type int
+    def _get_target_addr_int(target_addr):
+        if isinstance(target_addr, GlobalAddressBlock):
+            target_addr_int = target_addr.addr.addr
+        elif isinstance(target_addr, GlobalAddress):
+            target_addr_int = target_addr.addr
+        elif isinstance(target_addr, int):
+            target_addr_int = target_addr
+        else:
+            raise TypeError("target_addr must be GlobalAddressBlock, GlobalAddress or int")
+        return target_addr_int        
 
     def __call__(self, target_addr, *args, sync='lsync', gate=None, 
                  lsync_lco=None, rsync_lco=None, out_array=None):
@@ -211,21 +242,12 @@ class BaseAction(metaclass=ABCMeta):
                 'rsync'. If you do not care about the return value, you can specify this
                 argument to None(default).
         """
-        logging.debug("rank {0} on thread {1} calling action {2}".format(
-                     get_my_rank(), get_my_thread_id(), self.key))
+        logging.debug("rank {0} on thread {1} calling action {2}".format(get_my_rank(), get_my_thread_id(), self.key))
 
         if self.marshalled == 'true':
-            if self.pinned:
-                if not isinstance(target_addr, GlobalAddressBlock):
-                    raise TypeError("target_addr is not GlobalAddressBlock object") 
-                expandargs = list(args)
-                expandargs.insert(0, target_addr)
-                args = tuple(expandargs)
-            pointer, size = _parse_marshalled_args(args)
+            pointer, size = self._generate_marshalled_arguments(args)
         elif self.marshalled == 'continuous':
-            # support for pinned and continuous?
-            pointer = ffi.cast("void *", args[0].__array_interface__['data'][0])
-            size = ffi.cast("size_t", args[0].nbytes)
+            pointer, size = self._generate_array_arguments(args)
         else:
             c_args = self._generate_c_arguments(*args)
 
@@ -272,14 +294,7 @@ class BaseAction(metaclass=ABCMeta):
             return
 
         # get the address of target_addr of type int
-        if isinstance(target_addr, GlobalAddressBlock):
-            target_addr_int = target_addr.addr.addr
-        elif isinstance(target_addr, GlobalAddress):
-            target_addr_int = target_addr.addr
-        elif isinstance(target_addr, int):
-            target_addr_int = target_addr
-        else:
-            raise TypeError("target_addr must be GlobalAddressBlock, GlobalAddress or int")
+        target_addr_int = BaseAction._get_target_addr_int(target_addr)
 
         if gate is None:
             if sync == 'lsync':
@@ -310,6 +325,14 @@ class BaseAction(metaclass=ABCMeta):
                 raise TypeError("sync argument should be of type str")
         elif isinstance(gate, LCO):
             # TODO: support gate argument
+            # if sync == 'lsync':
+            #    if self.marshalled == 'true' or self.marshalled == 'continuous':
+            #        rtv = 
+            # elif sync == 'rsync':
+            #
+            # elif sync == 'async':
+            # else:
+            #    raise ValueError("sync argument not recognizable")
             pass
         else:
             raise TypeError("gate should be an instance of LCO")
