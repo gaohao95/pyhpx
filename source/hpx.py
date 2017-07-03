@@ -305,8 +305,7 @@ class BaseAction(metaclass=ABCMeta):
             elif sync == 'rsync':
                 if out_array is not None:
                     out_array_byte = out_array.nbytes
-                    out_array_pointer = ffi.cast("void *", 
-                        out_array.__array_interface__['data'][0])
+                    out_array_pointer = ffi.cast("void *", out_array.__array_interface__['data'][0])
                 else:
                     out_array_byte = 0
                     out_array_pointer = ffi.NULL
