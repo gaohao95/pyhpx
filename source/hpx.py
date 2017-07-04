@@ -183,7 +183,7 @@ class BaseAction(metaclass=ABCMeta):
         return c_args
 
     # Helper function for generating marshalled arguments
-    def _generate_marshalled_arguments(self, args):
+    def _generate_marshalled_arguments(self, target_addr, args):
         if self.pinned:
             if not isinstance(target_addr, GlobalAddressBlock):
                 raise TypeError("target_addr is not GlobalAddressBlock object") 
@@ -245,7 +245,7 @@ class BaseAction(metaclass=ABCMeta):
         logging.debug("rank {0} on thread {1} calling action {2}".format(get_my_rank(), get_my_thread_id(), self.key))
 
         if self.marshalled == 'true':
-            pointer, size = self._generate_marshalled_arguments(args)
+            pointer, size = self._generate_marshalled_arguments(target_addr, args)
         elif self.marshalled == 'continuous':
             pointer, size = self._generate_array_arguments(args)
         else:
@@ -343,7 +343,7 @@ def call_cc(action, target_addr, *args, gate=None):
     target_addr_int = BaseAction._get_addr_int(target_addr)
     if gate is None:
         if action.marshalled == 'true':
-            pointer, size = action._generate_marshalled_arguments(args)
+            pointer, size = action._generate_marshalled_arguments(target_addr, args)
             rtv = lib._hpx_call_cc(target_addr_int, action.id[0], 2, pointer, size)
         elif action.marshalled == 'continuous':
             pointer, size = action._generate_array_arguments(args)
@@ -353,7 +353,7 @@ def call_cc(action, target_addr, *args, gate=None):
             rtv = lib._hpx_call_cc(target_addr_int, action.id[0], len(c_args), *c_args)
     elif isinstance(gate, LCO):
         if action.marshalled == 'true':
-            pointer, size = action._generate_marshalled_arguments(args)
+            pointer, size = action._generate_marshalled_arguments(target_addr, args)
             rtv = lib._hpx_call_when_cc(gate.addr, target_addr_int, action.id[0], 2, pointer, size)
         elif action.marshalled == 'continuous':
             pointer, size = action._generate_array_arguments(args)
@@ -373,7 +373,7 @@ def call_with_continuation(target_action, target_addr, cont_action, cont_addr, *
 
     if gate is None:
         if target_action.marshalled == 'true':
-            pointer, size = target_action._generate_marshalled_arguments(args)
+            pointer, size = target_action._generate_marshalled_arguments(target_addr, args)
             rtv = lib._hpx_call_with_continuation(target_addr_int, target_action.id[0], cont_addr_int, 
                                                 cont_action.id[0], 2, pointer, size)
         elif target_action.marshalled == 'continuous':
@@ -386,7 +386,7 @@ def call_with_continuation(target_action, target_addr, cont_action, cont_addr, *
                                                 cont_action.id[0], len(c_args), *c_args)
     elif isinstance(gate, LCO):
         if target_action.marshalled == 'true':
-            pointer, size = target_action._generate_marshalled_arguments(args)
+            pointer, size = target_action._generate_marshalled_arguments(target_addr, args)
             rtv = lib._hpx_call_when_with_continuation(gate.addr, target_addr_int, target_action.id[0], cont_addr_int,
                                                 cont_action.id[0], 2, pointer, size)
         elif target_action.marshalled == 'continuous':
@@ -998,8 +998,11 @@ class GlobalMemory:
             numBlock = (numBlock,)
         if isinstance(blockShape, int):
             blockShape = (blockShape,)
+        
         if isinstance(loc, GlobalAddress):
             loc_addr = loc.addr
+        else:
+            loc_addr = loc
 
         block_size = _calculate_block_size(blockShape) * dtype.itemsize
         strides = GlobalMemory._calculate_strides(numBlock + blockShape, dtype)
