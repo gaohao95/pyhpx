@@ -1336,6 +1336,9 @@ def thread_continue(type, *args):
     if lib._hpx_thread_continue(2, pointer, size) != SUCCESS:
         raise HPXError("Errors occurred when launching continuation")
 
+def thread_current_target():
+    return lib.hpx_thread_current_target()
+
 # }}}
 
 # {{{ Logging
