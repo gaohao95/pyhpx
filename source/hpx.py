@@ -733,6 +733,10 @@ class DummyArray:
         self.__array_interface__['typestr'] = dtype.str
         self.__array_interface__['descr'] = dtype.descr
 
+def construct_array(addr, shape, dtype, strides=None):
+    dummy_array = DummyArray(addr, strides, shape, dtype)
+    return np.array(dummy_array, copy=False, dtype=dtype)
+
 class GlobalAddressBlock:
     def __init__(self, addr, shape, dtype, strides):
         """Constructor of a GlobalAddressBlock object
