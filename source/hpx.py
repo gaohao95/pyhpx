@@ -209,6 +209,8 @@ class BaseAction(metaclass=ABCMeta):
             target_addr_int = target_addr.addr
         elif isinstance(target_addr, int):
             target_addr_int = target_addr
+        elif isinstance(target_addr, np.integer):
+            target_addr_int = np.asscalar(target_addr)
         else:
             raise TypeError("target_addr must be GlobalAddressBlock, GlobalAddress or int")
         return target_addr_int        
