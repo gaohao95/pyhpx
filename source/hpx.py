@@ -285,7 +285,7 @@ class BaseAction(metaclass=ABCMeta):
                 else:
                     rtv = lib._hpx_process_broadcast(lib.hpx_thread_current_pid(),
                         self.id[0], lsync_addr, rsync_addr,
-                        len(c_args), *args)
+                        len(c_args), *c_args)
             elif isinstance(sync, str):
                 raise NameError("unrecognized string for sync argument")
             else:
@@ -303,7 +303,7 @@ class BaseAction(metaclass=ABCMeta):
                 if self.marshalled == 'true' or self.marshalled == 'continuous':
                     rtv = lib._hpx_call(target_addr_int, self.id[0], rsync_addr, 2, pointer, size)
                 else:
-                    rtv = lib._hpx_call(target_addr_int, self.id[0], rsync_addr, len(c_args), *args)
+                    rtv = lib._hpx_call(target_addr_int, self.id[0], rsync_addr, len(c_args), *c_args)
             elif sync == 'rsync':
                 if out_array is not None:
                     out_array_byte = out_array.nbytes
@@ -316,25 +316,38 @@ class BaseAction(metaclass=ABCMeta):
                         out_array_byte, 2, pointer, size)
                 else:
                     rtv = lib._hpx_call_sync(target_addr_int, self.id[0], out_array_pointer, 
-                        out_array_byte, len(c_args), *args)
+                        out_array_byte, len(c_args), *c_args)
             elif sync == 'async':
                 rtv = lib._hpx_call_async(target_addr.addr, self.id[0], lsync_addr, rsync_addr,
-                        len(c_args), *args)
+                        len(c_args), *c_args)
             elif isinstance(sync, str):
                 raise ValueError("sync argument not recognizable")
             else:
                 raise TypeError("sync argument should be of type str")
-        elif isinstance(gate, LCO):
-            # TODO: support gate argument
-            # if sync == 'lsync':
-            #    if self.marshalled == 'true' or self.marshalled == 'continuous':
-            #        rtv = 
-            # elif sync == 'rsync':
-            #
-            # elif sync == 'async':
-            # else:
-            #    raise ValueError("sync argument not recognizable")
-            pass
+        elif isinstance(gate, LCO):            
+            gate_int = gate.addr
+            if sync == 'lsync':
+                if self.marshalled == 'true' or self.marshalled == 'continuous':
+                    rtv = lib._hpx_call_when(gate_int, target_addr_int, self.id[0], rsync_addr, 2, pointer, size)
+                else:
+                    rtv = lib._hpx_call_when(gate_int, target_addr_int, self.id[0], rsync_addr, len(c_args), *c_args)
+            elif sync == 'rsync':
+                if out_array is not None:
+                    out_array_byte = out_array.nbytes
+                    out_array_pointer = ffi.cast("void *", out_array.__array_interface__['data'][0])
+                else:
+                    out_array_byte = 0
+                    out_array_pointer = ffi.NULL
+                if self.marshalled == 'true' or self.marshalled == 'continuous':
+                    rtv = lib._hpx_call_when_sync(gate_int, target_addr_int, self.id[0], out_array_pointer, 
+                        out_array_byte, 2, pointer, size)     
+                else:
+                    rtv = lib._hpx_call_when_sync(gate_int, target_addr_int, self.id[0], out_array_pointer,
+                        out_array_byte, len(c_args), *c_args)
+            elif sync == 'async':
+                raise RuntimeError("async not supported when gate is provided")
+            else:
+                raise ValueError("sync argument not recognizable")
         else:
             raise TypeError("gate should be an instance of LCO")
 
