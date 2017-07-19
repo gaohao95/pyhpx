@@ -19,6 +19,25 @@ def main():
     call_cc(hpx.HERE(), sync='lsync', rsync_lco=future)
     out_array = future.get()
     assert np.array_equal(out_array, np.arange(12).reshape((3,4)))
+    future.delete()
+
+    # test lsync calling interface with gate
+    future1 = hpx.Future()
+    future2 = hpx.Future((3,4), dtype=np.dtype(int))
+    set_funture_2(hpx.HERE(), future2, gate=future1)
+    set_lco(hpx.HERE(), future1, 2)
+    out_array = future2.get()
+    assert np.array_equal(out_array, np.arange(12).reshape((3,4)))
+    future1.delete()
+    future2.delete()
+
+    # test rsync calling interface with gate
+    future1 = hpx.Future()
+    out_array = np.zeros((3,4), dtype=int)
+    set_lco(hpx.HERE(), future1, 2)
+    set_future(hpx.HERE(), sync='rsync', gate=future1, out_array=out_array)
+    assert np.array_equal(out_array, np.arange(12).reshape((3,4)))
+    future1.delete()
 
     rtv = np.arange(6).reshape((2, 3))
     hpx.exit(rtv)
@@ -44,6 +63,12 @@ def call_cc():
 def set_future():
     rtarray = np.arange(12).reshape((3,4))
     hpx.thread_continue('array', rtarray)
+    return hpx.SUCCESS
+
+@hpx.create_action()
+def set_funture_2(future):
+    starray = np.arange(12).reshape((3,4))
+    future.set(starray)
     return hpx.SUCCESS
 
 if __name__ == '__main__':
