@@ -800,7 +800,12 @@ class GlobalAddressBlock:
         # if the indexing does not cover all dimension, fill in the remaining dimensions
         newShape += self.shape[len(keyWrap):]
         newStrides += self.strides[len(keyWrap):]
-        
+
+        # if a single element is left, the shape should be (1,)
+        if newShape == tuple():
+            newShape = (1,)
+            newStrides = self.strides[-1]
+
         return GlobalAddressBlock(newAddr, newShape, self.dtype, newStrides)  
 
     def try_pin(self):
