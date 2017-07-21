@@ -20,6 +20,11 @@ def main(n_parts, n_partition, theta_c, domain_size):
     done.wait()
     done.delete()
 
+    alldone = hpx.And(n_parts)
+    spawn_computation(root[0], root[0].addr.addr, root, alldone, theta_c)
+    alldone.wait()
+    alldone.delete()
+
     hpx.exit()
 
 @hpx.create_action()
@@ -66,9 +71,10 @@ def moment_reduction_op(lhs, rhs):
 @hpx.create_action()
 def partition_node(node_gas, parts, n_parts, n_partition):
     node = node_gas.try_pin()
+    node['parts'] = parts.addr.addr
+    node['count'] = n_parts
+
     if n_parts <= n_partition:
-        node['parts'] = parts.addr.addr
-        node['count'] = n_parts
         parts_local = parts[0].try_pin()
         node['moments'] = compute_moments(parts_local, n_parts)
         parts[0].unpin()
@@ -117,6 +123,90 @@ def save_and_continue_moments(node_gas, moments_lco):
     hpx.thread_continue('array', node['moments'])
     return hpx.SUCCESS
 
+@hpx.create_action()
+def spawn_computation(current, root, sync, theta): # (int, GlobalMemory, LCO, float)
+    current_local = hpx.GlobalAddress(current).try_pin()
+    node = hpx.construct_array(current_local, (1,), node_type)[0]
+    if(is_leaf(node)):
+        parts_addr = hpx.GlobalAddress(node['parts'], node['count']*particle_type.itemsize)
+        parts_gas = hpx.GlobalAddressBlock(parts_addr, (node['count'],), particle_type, (particle_type.itemsize,))
+        parts = parts_gas.try_pin()
+        for i in range(node['count']):
+            compute_and_save(hpx.HERE(), root, sync, parts_gas[i], parts[i]['pos'], theta)
+        parts_gas.unpin()
+    else:
+        if node['left'] != hpx.NULL().addr:
+            spawn_computation(node['left'], node['left'], root, sync, theta)
+        if node['right'] != hpx.NULL().addr:
+            spawn_computation(node['right'], node['right'], root, sync, theta)
+        
+    return hpx.SUCCESS
+
+@hpx.create_action()
+def compute_and_save(root, sync, current, pos, theta):
+    compdone = hpx.Future(shape=(1,), dtype=np.dtype(float))
+    node_compute_potential(root[0], root.addr.addr, pos, theta, rsync_lco=compdone)
+    particle_set_approx(current, current, compdone, gate=compdone, rsync_lco=sync)
+    return hpx.SUCCESS
+
+@hpx.create_action()
+def node_compute_potential(current, pos, theta): # (int, float, float)
+    print(current)
+    current_gas = hpx.GlobalAddress(current)
+    node = hpx.construct_array(current_gas.try_pin(), (1,), node_type)[0]
+    dist = pos - node['moments']['xcom']
+    size = node['high'] - node['low']
+    test = size / dist
+    if test < theta:
+        retval = node_compute_approx(node, pos)
+        hpx.thread_continue('array', retval)
+    elif is_leaf(node):
+        parts_gas = hpx.GlobalAddress(node['parts'])
+        particle_array = hpx.construct_array(parts_gas.try_pin(), (node['count'],), 
+                                             particle_type)
+        retval = node_compute_direct(particle_array, pos)
+        parts_gas.unpin()
+        hpx.thread_continue('array', retval)
+    else:
+        potential_lco = hpx.Reduce(2, (1,), np.dtype(float), float_sum_id, float_sum_op)
+        if node['left'] != hpx.NULL().addr:
+            node_compute_potential(node['left'], node['left'], pos, theta, rsync_lco=potential_lco)
+        else:
+            potential_lco.set(array=np.array([0.0], dtype=float), sync='async')
+
+        if node['right'] != hpx.NULL().addr:
+            node_compute_potential(node['right'], node['right'], pos, theta, rsync_lco=potential_lco)
+        else:
+            potential_lco.set(array=np.array([0.0], dtype=float), sync='async')
+        hpx.call_cc(potential_reduction_complete, potential_lco.addr, potential_lco, gate=potential_lco)
+    
+    current_gas.unpin()
+    return hpx.SUCCESS
+
+@hpx.create_action()
+def particle_set_approx(current, compdone): # (GlobalAddressBlock, LCO)
+    current_local = current.try_pin()
+    current.unpin()
+    return hpx.SUCCESS
+
+@hpx.create_id_action(np.dtype(float))
+def float_sum_id(array):
+    array[:] = 0
+
+@hpx.create_op_action(np.dtype(float))
+def float_sum_op(lhs, rhs):
+    lhs[:] = lhs + rhs
+
+@hpx.create_action()
+def potential_reduction_complete(potential_lco):
+    contval = potential_lco.get()
+    potential_lco.delete()
+    hpx.thread_continue('array', contval)
+    return hpx.SUCCESS
+
+def is_leaf(node):
+    return (node['left'] == hpx.NULL().addr) and (node['right'] == hpx.NULL().addr)
+
 def print_usage():
     print("Usage: python3 tree.py <N parts> <Partition Limit> <theta> <domain size>")
 
@@ -160,6 +250,14 @@ def generate_parts(n_parts, domain_length, where):
     parts['mass'] = np.random.rand(n_parts) * 0.9 + 0.1
     parts_gas[0].unpin()
     return parts_gas
+
+def node_compute_approx(node, pos):
+    return (-node['moments']['mtot']/abs(pos - node['moments']['xcom'])
+            - node['moments']['Q00']/(2 * abs(pos - node['moments']['xcom'])**3))
+
+def node_compute_direct(particles, pos):
+    a = -particles['mass']/np.abs(particles['pos'] - pos)
+    return np.sum(a)
 
 if __name__ == '__main__':
     try:
