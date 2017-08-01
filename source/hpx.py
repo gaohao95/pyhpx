@@ -667,13 +667,13 @@ class GlobalAddress:
         if return_local == True:
             local = ffi.new("void **")
             rtv = lib.hpx_gas_try_pin(self.addr, local)
-            if rtv == False:
+            if rtv != 1:
                 raise HPXError("Pinning the global memory fails")
             else:
                 return int(ffi.cast("uintptr_t", local[0]))
         else:
             rtv = lib.hpx_gas_try_pin(self._addr, ffi.NULL)
-            if rtv == False:
+            if rtv != 1:
                 raise HPXError("Pinning the global memory fails")
 
     def unpin(self):
@@ -804,7 +804,7 @@ class GlobalAddressBlock:
         # if a single element is left, the shape should be (1,)
         if newShape == tuple():
             newShape = (1,)
-            newStrides = self.strides[-1]
+            newStrides = (self.strides[-1],)
 
         return GlobalAddressBlock(newAddr, newShape, self.dtype, newStrides)  
 
