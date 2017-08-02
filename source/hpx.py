@@ -194,7 +194,7 @@ class BaseAction(metaclass=ABCMeta):
         return pointer, size
 
     # Helper function for generating array arguments
-    def _generate_array_arguments(self, *args):
+    def _generate_array_arguments(self, args):
         if self.pinned:
             raise RuntimeError("Pinned action is not supported for array argument")
         pointer = ffi.cast("void *", args[0].__array_interface__['data'][0])
