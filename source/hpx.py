@@ -215,8 +215,7 @@ class BaseAction(metaclass=ABCMeta):
             raise TypeError("target_addr must be GlobalAddressBlock, GlobalAddress or int")
         return target_addr_int        
 
-    def __call__(self, target_addr, *args, sync='lsync', gate=None, 
-                 lsync_lco=None, rsync_lco=None, out_array=None):
+    def __call__(self, target_addr, *args, sync='lsync', gate=None, lsync_lco=None, rsync_lco=None, out_array=None):
         """ Launch an Action.
 
         Args:
@@ -226,7 +225,7 @@ class BaseAction(metaclass=ABCMeta):
                 this argument can be either GlobalAddressBlock or GlobalAddress. You can 
                 launch this action on every locality of this process by specifing this 
                 argument to hpx.NULL().
-            sync (string): This argument can be either 'aysnc', lsync' or 'rsync'. If 
+            sync (string): This argument can be either 'async', lsync' or 'rsync'. If 
                 this argument is 'rsync', this is a completely synchronized call meaning
                 this function call will be blocked until the action is completed. If 
                 this argument is 'lsync', this is a locally synchronized call and you 
@@ -318,8 +317,11 @@ class BaseAction(metaclass=ABCMeta):
                     rtv = lib._hpx_call_sync(target_addr_int, self.id[0], out_array_pointer, 
                         out_array_byte, len(c_args), *c_args)
             elif sync == 'async':
-                rtv = lib._hpx_call_async(target_addr.addr, self.id[0], lsync_addr, rsync_addr,
-                        len(c_args), *c_args)
+                if self.marshalled == 'true' or self.marshalled == 'continuous':
+                    rtv = lib._hpx_call_async(target_addr_int, self.id[0], lsync_addr, rsync_addr, 2, pointer, size)
+                else:
+                    rtv = lib._hpx_call_async(target_addr_int, self.id[0], lsync_addr, rsync_addr, len(c_args), 
+                        *c_args)
             elif isinstance(sync, str):
                 raise ValueError("sync argument not recognizable")
             else:
