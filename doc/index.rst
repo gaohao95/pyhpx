@@ -1,4 +1,4 @@
-HPX-Python documentation
+PyHPX documentation
 ========================
 
 .. toctree::
